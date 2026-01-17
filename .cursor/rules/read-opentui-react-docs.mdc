@@ -1,0 +1,40 @@
+---
+description: Read OpenTUI React documentation when working on OpenTUI components to understand the correct APIs and patterns
+globs: "*.ts, *.tsx"
+alwaysApply: false
+---
+
+When working with OpenTUI React components (from `@opentui/react` or `@opentui/core`), you MUST:
+
+1. **Read the OpenTUI React documentation** before making changes to components that use OpenTUI
+2. **Understand the component APIs** - OpenTUI has specific components like `<box>`, `<scrollbox>`, `<text>`, etc. with their own APIs
+3. **Use the correct patterns** - OpenTUI components don't work exactly like DOM elements
+
+## Documentation Location
+
+The OpenTUI React documentation is located at:
+**https://raw.githubusercontent.com/anomalyco/opentui/refs/heads/main/packages/react/README.md**
+
+## When to Read the Docs
+
+Read the documentation when:
+- Working on components that use OpenTUI (`<box>`, `<scrollbox>`, `<text>`, etc.)
+- Trying to implement scrolling, layout, or styling in OpenTUI components
+- Debugging issues with OpenTUI component behavior
+- Adding new OpenTUI components or features
+- Understanding how refs, events, or props work in OpenTUI
+
+## Key Points from the Docs
+
+- **Components**: `<box>`, `<scrollbox>`, `<text>`, `<input>`, `<select>`, etc. are OpenTUI-specific
+- **Scrolling**: Use `<scrollbox>` for scrollable content, not `<box>` with `overflow="scroll"`
+- **Styling**: Components can be styled using props or the `style` prop
+- **Refs**: Refs work differently than DOM refs - they reference OpenTUI renderables
+- **Events**: Event handling may differ from standard React/DOM patterns
+
+## Important Notes
+
+- OpenTUI is a terminal UI library, not a web DOM library
+- Component APIs may differ significantly from standard React/DOM patterns
+- Always verify component capabilities and limitations in the documentation
+- When in doubt, check the docs before implementing a feature

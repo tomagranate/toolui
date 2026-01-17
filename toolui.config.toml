@@ -1,0 +1,96 @@
+[ui]
+sidebarPosition = "left"
+horizontalTabPosition = "top"
+widthThreshold = 100
+theme = "default"
+
+[[tools]]
+name = "continuous-logger"
+command = "bun"
+args = ["test-scripts/continuous-logger.js"]
+cwd = "."
+cleanup = ["echo 'Stopped continuous logger'"]
+
+[[tools]]
+name = "web-server"
+command = "bun"
+args = ["test-scripts/web-server-sim.js"]
+cwd = "."
+cleanup = ["echo 'Web server cleanup complete'"]
+
+[[tools]]
+name = "database"
+command = "bun"
+args = ["test-scripts/database-sim.js"]
+cwd = "."
+cleanup = ["echo 'Database cleanup complete'"]
+
+[[tools]]
+name = "mixed-output"
+command = "bun"
+args = ["test-scripts/mixed-output.js"]
+cwd = "."
+cleanup = []
+
+[[tools]]
+name = "slow-start"
+command = "bun"
+args = ["test-scripts/slow-start.js"]
+cwd = "."
+cleanup = []
+
+[[tools]]
+name = "graceful-shutdown"
+command = "bun"
+args = ["test-scripts/graceful-shutdown.js"]
+cwd = "."
+cleanup = ["echo 'Graceful shutdown cleanup'"]
+
+[[tools]]
+name = "work-then-cleanup"
+command = "bun"
+args = ["test-scripts/work-then-cleanup.js"]
+cwd = "."
+cleanup = ["echo 'Work process cleanup'"]
+
+[[tools]]
+name = "build-then-wait"
+command = "bun"
+args = ["test-scripts/build-then-wait.js"]
+cwd = "."
+cleanup = ["echo 'Build cleanup'"]
+
+[[tools]]
+name = "burst-then-stop"
+command = "bun"
+args = ["test-scripts/burst-then-stop.js"]
+cwd = "."
+cleanup = []
+
+[[tools]]
+name = "timed-exit"
+command = "bun"
+args = ["test-scripts/timed-exit.js"]
+cwd = "."
+cleanup = []
+
+[[tools]]
+name = "error-exit"
+command = "bun"
+args = ["test-scripts/error-exit.js"]
+cwd = "."
+cleanup = []
+
+[[tools]]
+name = "color-output"
+command = "bun"
+args = ["test-scripts/color-output.js"]
+cwd = "."
+cleanup = []
+
+[[tools]]
+name = "long-output"
+command = "bun"
+args = ["test-scripts/long-output.js"]
+cwd = "."
+cleanup = []

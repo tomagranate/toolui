@@ -1,0 +1,40 @@
+---
+description: Always run typecheck and lint checks before completing coding tasks, fixing any errors found
+globs: "*.ts, *.tsx, *.js, *.jsx"
+alwaysApply: true
+---
+
+Before completing any coding task, you MUST:
+
+1. **Run typecheck**: Execute `bun run typecheck` to check for TypeScript errors
+2. **Run lint checks**: Execute `bun run check` to check for linting and formatting issues
+3. **Fix all errors**: If any errors are found, fix them before marking the task as complete
+4. **Verify fixes**: Re-run the checks to ensure all errors are resolved
+
+## Required Commands
+
+After making code changes, always run:
+```bash
+bun run typecheck && bun run check
+```
+
+## Error Handling
+
+- If typecheck fails: Fix TypeScript type errors, missing imports, or incorrect type usage
+- If lint check fails: Fix formatting issues, unused imports, or other linting violations
+- Never mark a task as complete if there are unresolved typecheck or lint errors
+- If you cannot fix an error, explain why and suggest an alternative approach
+
+## Exception
+
+Only skip these checks if:
+- The user explicitly asks you to skip validation
+- You're making a temporary change for debugging purposes
+- The codebase is known to have pre-existing errors that are out of scope
+
+## Best Practices
+
+- Run checks after each significant code change, not just at the end
+- Fix errors incrementally rather than accumulating them
+- Use the exact commands from package.json scripts
+- Verify that fixes don't introduce new errors
