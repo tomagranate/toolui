@@ -1,5 +1,5 @@
 import { TextAttributes } from "@opentui/core";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { ToolState } from "../types";
 import type { Theme } from "../utils/themes";
 
@@ -9,6 +9,79 @@ interface TabBarProps {
 	onSelect: (index: number) => void;
 	vertical?: boolean;
 	theme: Theme;
+	width?: number; // Terminal width for horizontal tab calculations
+}
+
+// Constants for tab width calculations
+const INDICATOR_WIDTH = 3; // "◀ " or " ▶"
+const TAB_PADDING = 4; // paddingLeft=2 + paddingRight=2
+const STATUS_ICON_WIDTH = 2; // "● " or "○ "
+const MAX_TAB_NAME_LENGTH = 15; // Truncate longer names
+const BORDER_WIDTH = 2; // Left and right border
+
+/**
+ * Truncate a tab name if it exceeds the maximum length
+ */
+function truncateName(
+	name: string,
+	maxLength: number = MAX_TAB_NAME_LENGTH,
+): string {
+	if (name.length <= maxLength) {
+		return name;
+	}
+	return `${name.slice(0, maxLength - 1)}…`;
+}
+
+/**
+ * Calculate the display width of a single tab
+ */
+function getTabWidth(name: string): number {
+	const truncatedName = truncateName(name);
+	return STATUS_ICON_WIDTH + truncatedName.length + TAB_PADDING;
+}
+
+/**
+ * Calculate which tabs are visible given the available width and scroll offset
+ */
+function calculateVisibleTabs(
+	tools: ToolState[],
+	availableWidth: number,
+	scrollOffset: number,
+	hasMoreLeft: boolean,
+): { visibleIndices: number[]; lastVisibleIndex: number } {
+	// Account for indicators if they will be shown
+	let usableWidth = availableWidth - BORDER_WIDTH;
+	if (hasMoreLeft) {
+		usableWidth -= INDICATOR_WIDTH;
+	}
+	// Reserve space for right indicator (we'll check if needed)
+	const reservedForRight = INDICATOR_WIDTH;
+
+	const visibleIndices: number[] = [];
+	let currentWidth = 0;
+	let lastVisibleIndex = scrollOffset;
+
+	for (let i = scrollOffset; i < tools.length; i++) {
+		const tool = tools[i] as ToolState | undefined;
+		if (!tool) continue;
+		const tabWidth = getTabWidth(tool.config.name);
+		const hasMoreAfterThis = i < tools.length - 1;
+
+		// Check if this tab fits (considering right indicator if there are more tabs)
+		const widthNeeded = hasMoreAfterThis
+			? currentWidth + tabWidth + reservedForRight
+			: currentWidth + tabWidth;
+
+		if (widthNeeded <= usableWidth) {
+			visibleIndices.push(i);
+			currentWidth += tabWidth;
+			lastVisibleIndex = i;
+		} else {
+			break;
+		}
+	}
+
+	return { visibleIndices, lastVisibleIndex };
 }
 
 export function TabBar({
@@ -17,147 +90,85 @@ export function TabBar({
 	onSelect,
 	vertical = false,
 	theme,
+	width = 80,
 }: TabBarProps) {
 	const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-	const containerRef = useRef<unknown>(null);
-	const tabRefs = useRef<unknown[]>([]);
+	const [scrollOffset, setScrollOffset] = useState(0); // First visible tab index
 	const { colors } = theme;
 
-	// Auto-scroll to active tab when it changes (horizontal only)
+	// Calculate if we have tabs before the visible range
+	const hasMoreLeft = scrollOffset > 0;
+
+	// Calculate visible tabs
+	const { visibleIndices, lastVisibleIndex } = calculateVisibleTabs(
+		tools,
+		width,
+		scrollOffset,
+		hasMoreLeft,
+	);
+
+	const hasMoreRight = lastVisibleIndex < tools.length - 1;
+
+	// Auto-scroll to keep active tab visible
 	useEffect(() => {
 		if (vertical || activeIndex < 0 || activeIndex >= tools.length) {
 			return;
 		}
 
-		// Use setTimeout with a small delay to ensure layout has completed
-		// Terminal UIs might need a bit more time to complete layout
-		const timeoutId = setTimeout(() => {
-			// Try multiple approaches to scroll the active tab into view
-			const container = containerRef.current;
-			const activeTab = tabRefs.current[activeIndex];
-
-			if (!container || !activeTab) {
-				return;
+		// If active tab is before the visible range, scroll left
+		if (activeIndex < scrollOffset) {
+			setScrollOffset(activeIndex);
+		}
+		// If active tab is after the visible range, scroll right
+		else if (activeIndex > lastVisibleIndex) {
+			// Find the minimum scroll offset that makes activeIndex visible
+			// Start from activeIndex and work backwards to find how many tabs fit
+			let newOffset = activeIndex;
+			let totalWidth = BORDER_WIDTH;
+			if (newOffset > 0) {
+				totalWidth += INDICATOR_WIDTH; // Left indicator will be shown
 			}
 
-			// Try to access scroll properties through various possible APIs
-			// OpenTUI might expose these differently than DOM
-			const containerEl = container as Record<string, unknown>;
-			const tabEl = activeTab as Record<string, unknown>;
+			for (let i = activeIndex; i >= 0; i--) {
+				const tool = tools[i];
+				if (!tool) continue;
+				const tabWidth = getTabWidth(tool.config.name);
+				const hasMoreAfter = activeIndex < tools.length - 1;
+				const neededWidth = hasMoreAfter
+					? totalWidth + tabWidth + INDICATOR_WIDTH
+					: totalWidth + tabWidth;
 
-			// Get tab position and dimensions
-			const tabOffsetLeft = (tabEl.offsetLeft as number) ?? 0;
-			const tabWidth = (tabEl.offsetWidth as number) ?? 0;
-			const clientWidth = (containerEl.clientWidth as number) ?? 100;
-
-			// Method 1: Try DOM-like scrollLeft property (read-only check first)
-			// Only proceed if scrollLeft exists and is a number property
-			if (
-				"scrollLeft" in containerEl &&
-				typeof containerEl.scrollLeft === "number"
-			) {
-				try {
-					const currentScrollLeft = containerEl.scrollLeft as number;
-					const tabRight = tabOffsetLeft + tabWidth;
-					const viewportRight = currentScrollLeft + clientWidth;
-
-					// Only scroll if tab is outside viewport
-					if (tabOffsetLeft < currentScrollLeft) {
-						// Tab is to the left, scroll to show it at the start
-						(containerEl as { scrollLeft: number }).scrollLeft = tabOffsetLeft;
-						// Verify the value was actually set (not a read-only property)
-						if ((containerEl.scrollLeft as number) === tabOffsetLeft) {
-							return;
-						}
-					} else if (tabRight > viewportRight) {
-						// Tab is to the right, scroll to show it
-						const newScrollLeft = tabRight - clientWidth;
-						(containerEl as { scrollLeft: number }).scrollLeft = newScrollLeft;
-						// Verify the value was actually set
-						if ((containerEl.scrollLeft as number) === newScrollLeft) {
-							return;
-						}
-					} else {
-						// Tab is already in view, no need to scroll
-						return;
-					}
-				} catch {
-					// Property might be read-only or not writable, skip this method
+				if (neededWidth <= width) {
+					totalWidth += tabWidth;
+					newOffset = i;
+				} else {
+					break;
 				}
 			}
 
-			// Method 2: Try scrollTo method
-			if (typeof containerEl.scrollTo === "function") {
-				const scrollTo = containerEl.scrollTo as (options: {
-					left?: number;
-					behavior?: string;
-				}) => void;
-				scrollTo({ left: tabOffsetLeft, behavior: "auto" });
-				return;
-			}
+			setScrollOffset(newOffset);
+		}
+	}, [activeIndex, scrollOffset, lastVisibleIndex, tools, vertical, width]);
 
-			// Method 3: Try accessing internal OpenTUI scroll state
-			// Only try scroll-related properties, NOT position properties like 'x', 'left', 'top'
-			// Avoid properties that might control container position rather than scroll
-			const possibleScrollProps = ["_scrollLeft", "scrollX", "scrollOffset"];
-			const positionProps = new Set([
-				"x",
-				"y",
-				"left",
-				"top",
-				"right",
-				"bottom",
-			]);
+	// Scroll handlers
+	const scrollLeft = () => {
+		setScrollOffset((prev) => Math.max(0, prev - 1));
+	};
 
-			for (const prop of possibleScrollProps) {
-				// Skip if this looks like a position property
-				if (positionProps.has(prop)) {
-					continue;
-				}
+	const scrollRight = () => {
+		setScrollOffset((prev) => Math.min(tools.length - 1, prev + 1));
+	};
 
-				// Check if property exists and is a number (readable)
-				if (
-					prop in containerEl &&
-					typeof containerEl[prop] === "number" &&
-					// Make sure it's not a getter-only property by checking if we can read it
-					!Number.isNaN(containerEl[prop] as number)
-				) {
-					// Try to read current value to verify it's a scroll property
-					// If reading it changes or if it's clearly a position, skip it
-					const currentScroll = containerEl[prop] as number;
-
-					// Only proceed if the value seems reasonable for scroll (non-negative, typically)
-					// Position properties might be negative or very large
-					if (currentScroll < 0 || currentScroll > 100000) {
-						continue;
-					}
-
-					const tabRight = tabOffsetLeft + tabWidth;
-					const viewportRight = currentScroll + clientWidth;
-
-					// Only scroll if tab is outside viewport
-					if (tabOffsetLeft < currentScroll) {
-						(containerEl[prop] as number) = tabOffsetLeft;
-					} else if (tabRight > viewportRight) {
-						(containerEl[prop] as number) = tabRight - clientWidth;
-					}
-					return;
-				}
-			}
-
-			// If we reach here, OpenTUI doesn't support programmatic scrolling
-			// This is fine - the user can manually scroll if needed
-		}, 10); // Small delay to ensure layout is complete
-
-		return () => {
-			clearTimeout(timeoutId);
-		};
-	}, [activeIndex, tools.length, vertical]);
-
-	// Initialize tab refs array
-	useEffect(() => {
-		tabRefs.current = new Array(tools.length);
-	}, [tools.length]);
+	// Handle wheel events for scrolling
+	const handleWheel = (deltaX: number, deltaY: number) => {
+		// Use horizontal scroll, or vertical scroll if no horizontal
+		const delta = deltaX !== 0 ? deltaX : deltaY;
+		if (delta > 0) {
+			scrollRight();
+		} else if (delta < 0) {
+			scrollLeft();
+		}
+	};
 
 	const getTabBackgroundColor = (index: number) => {
 		if (index === activeIndex) {
@@ -167,6 +178,35 @@ export function TabBar({
 			return colors.activeTabBackground; // Use same as active for hover
 		}
 		return colors.background;
+	};
+
+	const getStatusIcon = (status: ToolState["status"]) => {
+		switch (status) {
+			case "running":
+				return "● ";
+			case "shuttingDown":
+				return "⚠ ";
+			case "error":
+				return "✗ ";
+			default:
+				return "○ ";
+		}
+	};
+
+	const getTabTextColor = (tool: ToolState, index: number) => {
+		if (index === activeIndex) {
+			return colors.activeTabText;
+		}
+		switch (tool.status) {
+			case "error":
+				return colors.statusError;
+			case "shuttingDown":
+				return colors.statusShuttingDown;
+			case "running":
+				return colors.statusRunning;
+			default:
+				return colors.inactiveTabText;
+		}
 	};
 
 	if (vertical) {
@@ -197,25 +237,9 @@ export function TabBar({
 					>
 						<text
 							attributes={index === activeIndex ? TextAttributes.BOLD : 0}
-							fg={
-								index === activeIndex
-									? colors.activeTabText
-									: tool.status === "error"
-										? colors.statusError
-										: tool.status === "shuttingDown"
-											? colors.statusShuttingDown
-											: tool.status === "running"
-												? colors.statusRunning
-												: colors.inactiveTabText
-							}
+							fg={getTabTextColor(tool, index)}
 						>
-							{tool.status === "running"
-								? "● "
-								: tool.status === "shuttingDown"
-									? "⚠ "
-									: tool.status === "error"
-										? "✗ "
-										: "○ "}
+							{getStatusIcon(tool.status)}
 							{tool.config.name}
 						</text>
 					</box>
@@ -224,12 +248,9 @@ export function TabBar({
 		);
 	}
 
-	// Horizontal tab bar
+	// Horizontal tab bar with custom scrolling
 	return (
-		<scrollbox
-			ref={(el) => {
-				containerRef.current = el as unknown;
-			}}
+		<box
 			height={3}
 			width="100%"
 			flexDirection="row"
@@ -237,51 +258,92 @@ export function TabBar({
 			borderStyle="single"
 			padding={0}
 			backgroundColor={colors.background}
-			focused
+			{...({
+				onWheel: (event: { deltaX: number; deltaY: number }) => {
+					handleWheel(event.deltaX, event.deltaY);
+				},
+			} as Record<string, unknown>)}
 		>
-			{tools.map((tool, index) => (
+			{/* Left scroll indicator */}
+			{hasMoreLeft && (
 				<box
-					ref={(el) => {
-						tabRefs.current[index] = el as unknown;
-					}}
-					key={`${tool.config.name}-${index}`}
-					paddingLeft={2}
-					paddingRight={2}
-					paddingTop={0}
-					paddingBottom={0}
-					minWidth={15}
-					backgroundColor={getTabBackgroundColor(index)}
+					width={INDICATOR_WIDTH}
+					height={1}
+					paddingLeft={0}
+					paddingRight={1}
+					backgroundColor={colors.background}
 					{...({
-						onMouseDown: () => onSelect(index),
-						onMouseEnter: () => setHoveredIndex(index),
+						onMouseDown: scrollLeft,
+						onMouseEnter: () => setHoveredIndex(-1),
 						onMouseLeave: () => setHoveredIndex(null),
 					} as Record<string, unknown>)}
 				>
 					<text
-						attributes={index === activeIndex ? TextAttributes.BOLD : 0}
 						fg={
-							index === activeIndex
+							hoveredIndex === -1
 								? colors.activeTabText
-								: tool.status === "error"
-									? colors.statusError
-									: tool.status === "shuttingDown"
-										? colors.statusShuttingDown
-										: tool.status === "running"
-											? colors.statusRunning
-											: colors.inactiveTabText
+								: colors.inactiveTabText
 						}
 					>
-						{tool.status === "running"
-							? "● "
-							: tool.status === "shuttingDown"
-								? "⚠ "
-								: tool.status === "error"
-									? "✗ "
-									: "○ "}
-						{tool.config.name}
+						◀
 					</text>
 				</box>
-			))}
-		</scrollbox>
+			)}
+
+			{/* Visible tabs */}
+			{visibleIndices.map((index) => {
+				const tool = tools[index];
+				if (!tool) return null;
+				return (
+					<box
+						key={`${tool.config.name}-${index}`}
+						paddingLeft={2}
+						paddingRight={2}
+						paddingTop={0}
+						paddingBottom={0}
+						backgroundColor={getTabBackgroundColor(index)}
+						{...({
+							onMouseDown: () => onSelect(index),
+							onMouseEnter: () => setHoveredIndex(index),
+							onMouseLeave: () => setHoveredIndex(null),
+						} as Record<string, unknown>)}
+					>
+						<text
+							attributes={index === activeIndex ? TextAttributes.BOLD : 0}
+							fg={getTabTextColor(tool, index)}
+						>
+							{getStatusIcon(tool.status)}
+							{truncateName(tool.config.name)}
+						</text>
+					</box>
+				);
+			})}
+
+			{/* Right scroll indicator */}
+			{hasMoreRight && (
+				<box
+					width={INDICATOR_WIDTH}
+					height={1}
+					paddingLeft={1}
+					paddingRight={0}
+					backgroundColor={colors.background}
+					{...({
+						onMouseDown: scrollRight,
+						onMouseEnter: () => setHoveredIndex(-2),
+						onMouseLeave: () => setHoveredIndex(null),
+					} as Record<string, unknown>)}
+				>
+					<text
+						fg={
+							hoveredIndex === -2
+								? colors.activeTabText
+								: colors.inactiveTabText
+						}
+					>
+						▶
+					</text>
+				</box>
+			)}
+		</box>
 	);
 }

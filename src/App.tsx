@@ -1,9 +1,8 @@
 import { type CliRenderer, TextAttributes } from "@opentui/core";
-import { useKeyboard } from "@opentui/react";
+import { useKeyboard, useTerminalDimensions } from "@opentui/react";
 import { useEffect, useState } from "react";
 import { LogViewer } from "./components/LogViewer";
 import { TabBar } from "./components/TabBar";
-import { useTerminalSize } from "./hooks/useTerminalSize";
 import type { ProcessManager } from "./process-manager";
 import type { Config, ToolState } from "./types";
 import { getTheme } from "./utils/themes";
@@ -25,7 +24,7 @@ export function App({
 }: AppProps) {
 	const [tools, setTools] = useState<ToolState[]>(initialTools);
 	const [activeIndex, setActiveIndex] = useState(0);
-	const { width: terminalWidth } = useTerminalSize(renderer);
+	const { width: terminalWidth } = useTerminalDimensions();
 
 	const widthThreshold = config.ui?.widthThreshold ?? DEFAULT_WIDTH_THRESHOLD;
 	const sidebarPosition = config.ui?.sidebarPosition ?? "left";
@@ -133,19 +132,24 @@ export function App({
 			}}
 			vertical={useVertical}
 			theme={theme}
+			width={terminalWidth}
 		/>
 	);
 
 	const logViewerComponent = (
-		<box flexGrow={1} flexDirection="column" height="100%">
+		<box
+			flexGrow={1}
+			flexDirection="column"
+			height="100%"
+			border
+			borderStyle="rounded"
+		>
 			{activeTool ? (
 				<LogViewer tool={activeTool} theme={theme} />
 			) : (
 				<scrollbox
 					flexGrow={1}
 					height="100%"
-					border
-					borderStyle="single"
 					padding={1}
 					flexDirection="column"
 					backgroundColor={theme.colors.background}
@@ -167,15 +171,13 @@ export function App({
 		>
 			{hasShuttingDown && (
 				<box
-					height={2}
-					border
-					borderStyle="single"
+					height={1}
 					paddingLeft={1}
 					paddingRight={1}
 					backgroundColor={theme.colors.warningBackground}
 				>
 					<text attributes={TextAttributes.BOLD} fg={theme.colors.warningText}>
-						⚠ WARNING: {shuttingDownCount} process
+						WARNING: {shuttingDownCount} process
 						{shuttingDownCount > 1 ? "es" : ""} shutting down gracefully. Please
 						wait...
 					</text>
@@ -197,9 +199,9 @@ export function App({
 				</box>
 			)}
 			<box
-				height={1}
+				height={3}
 				border
-				borderStyle="single"
+				borderStyle="rounded"
 				paddingLeft={1}
 				paddingRight={1}
 				backgroundColor={theme.colors.background}
