@@ -3,6 +3,7 @@ import { createRoot } from "@opentui/react";
 import { App } from "./App";
 import { ProcessManager } from "./process-manager";
 import { loadConfig } from "./utils/config";
+import { getTerminalTheme, getTheme, type Theme } from "./utils/themes";
 
 async function main() {
 	try {
@@ -17,13 +18,36 @@ async function main() {
 			process.exit(1);
 		}
 
+		// Resolve theme before creating renderer
+		// This is important for "terminal" theme which uses OSC queries
+		// that must happen before the renderer puts stdin in raw mode
+		let resolvedTheme: Theme;
+		if (config.ui?.theme === "terminal") {
+			const terminalTheme = await getTerminalTheme();
+			if (terminalTheme) {
+				resolvedTheme = terminalTheme;
+			} else {
+				// Fall back to default theme if terminal detection fails
+				console.error(
+					"Warning: Could not detect terminal theme, falling back to default",
+				);
+				resolvedTheme = getTheme("default");
+			}
+		} else {
+			resolvedTheme = getTheme(config.ui?.theme);
+		}
+
 		// Initialize process manager
 		const maxLogLines = config.ui?.maxLogLines ?? 10000;
 		const processManager = new ProcessManager(maxLogLines);
 		const initialTools = await processManager.initialize(config.tools);
 
 		// Create renderer and render app
-		const renderer = await createCliRenderer();
+		// Disable built-in Ctrl-C/signal handling - we manage shutdown ourselves
+		const renderer = await createCliRenderer({
+			exitOnCtrlC: false, // Don't destroy on Ctrl-C keypress
+			exitSignals: [], // Don't register any signal handlers
+		});
 		const root = createRoot(renderer);
 		root.render(
 			<App
@@ -31,6 +55,7 @@ async function main() {
 				initialTools={initialTools}
 				renderer={renderer}
 				config={config}
+				theme={resolvedTheme}
 			/>,
 		);
 
@@ -54,9 +79,21 @@ async function main() {
 		};
 
 		// Handle SIGTERM (external termination signal)
-		// Note: SIGINT (Ctrl-C) is handled by the keyboard handler in App.tsx
-		// when the renderer is in raw mode, so we don't need a SIGINT handler here
 		process.on("SIGTERM", cleanup);
+
+		// Handle SIGINT (Ctrl-C)
+		// First Ctrl-C triggers graceful shutdown, second forces immediate exit
+		let sigintCount = 0;
+		process.on("SIGINT", async () => {
+			sigintCount++;
+			if (sigintCount === 1) {
+				// First Ctrl-C: trigger graceful shutdown
+				await cleanup();
+			} else {
+				// Second Ctrl-C during shutdown: force quit
+				process.exit(1);
+			}
+		});
 
 		// Start rendering
 		await renderer.start();

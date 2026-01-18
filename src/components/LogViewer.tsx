@@ -71,13 +71,7 @@ export function LogViewer({ tool, theme }: LogViewerProps) {
 	}, []);
 
 	return (
-		<box
-			flexGrow={1}
-			height="100%"
-			flexDirection="column"
-			border
-			borderStyle="single"
-		>
+		<box flexGrow={1} height="100%" flexDirection="column">
 			{/* Top scroll indicator */}
 			{scrollInfo.linesAbove > 0 && (
 				<box

@@ -2,7 +2,7 @@
 sidebarPosition = "left"
 horizontalTabPosition = "top"
 widthThreshold = 100
-theme = "default"
+theme = "terminal"
 
 [[tools]]
 name = "continuous-logger"

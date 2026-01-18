@@ -3,15 +3,17 @@ import { useKeyboard, useTerminalDimensions } from "@opentui/react";
 import { useEffect, useState } from "react";
 import { LogViewer } from "./components/LogViewer";
 import { TabBar } from "./components/TabBar";
+import { StatusIcons } from "./constants";
 import type { ProcessManager } from "./process-manager";
 import type { Config, ToolState } from "./types";
-import { getTheme } from "./utils/themes";
+import type { Theme } from "./utils/themes";
 
 interface AppProps {
 	processManager: ProcessManager;
 	initialTools: ToolState[];
 	renderer: CliRenderer;
 	config: Config;
+	theme: Theme;
 }
 
 const DEFAULT_WIDTH_THRESHOLD = 100;
@@ -21,15 +23,17 @@ export function App({
 	initialTools,
 	renderer,
 	config,
+	theme,
 }: AppProps) {
 	const [tools, setTools] = useState<ToolState[]>(initialTools);
 	const [activeIndex, setActiveIndex] = useState(0);
+	const [navigationKey, setNavigationKey] = useState(0);
 	const { width: terminalWidth } = useTerminalDimensions();
 
 	const widthThreshold = config.ui?.widthThreshold ?? DEFAULT_WIDTH_THRESHOLD;
 	const sidebarPosition = config.ui?.sidebarPosition ?? "left";
 	const horizontalTabPosition = config.ui?.horizontalTabPosition ?? "top";
-	const theme = getTheme(config.ui?.theme);
+	const showTabNumbers = config.ui?.showTabNumbers ?? false;
 	const useVertical = terminalWidth >= widthThreshold;
 
 	// Update tools state periodically to reflect log changes
@@ -50,9 +54,17 @@ export function App({
 
 	// Handle keyboard input
 	useKeyboard(async (key) => {
+		const isShuttingDown = processManager.getIsShuttingDown();
+
 		if (key.ctrl && key.name === "c") {
-			// Trigger graceful shutdown (same as 'q')
-			// Don't stop renderer yet - let it show shutdown progress
+			if (isShuttingDown) {
+				// Already shutting down - force quit
+				renderer.stop();
+				renderer.destroy();
+				process.exit(1);
+				return;
+			}
+			// Not shutting down - start graceful shutdown
 			await processManager.cleanup();
 			renderer.stop();
 			renderer.destroy();
@@ -61,8 +73,11 @@ export function App({
 		}
 
 		if (key.name === "q") {
-			// Trigger graceful shutdown
-			// Don't stop renderer yet - let it show shutdown progress
+			if (isShuttingDown) {
+				// Already shutting down - ignore 'q'
+				return;
+			}
+			// Start graceful shutdown
 			await processManager.cleanup();
 			renderer.stop();
 			renderer.destroy();
@@ -70,20 +85,24 @@ export function App({
 			return;
 		}
 
-		// Tab navigation
+		// Tab navigation - increment navigationKey to signal auto-scroll should happen
 		if (key.name === "h" || key.name === "left") {
+			setNavigationKey((k) => k + 1);
 			setActiveIndex((prev) => (prev > 0 ? prev - 1 : tools.length - 1));
 		}
 		if (key.name === "l" || key.name === "right") {
+			setNavigationKey((k) => k + 1);
 			setActiveIndex((prev) => (prev < tools.length - 1 ? prev + 1 : 0));
 		}
 		if (key.name === "j" || key.name === "down") {
 			if (useVertical) {
+				setNavigationKey((k) => k + 1);
 				setActiveIndex((prev) => (prev < tools.length - 1 ? prev + 1 : 0));
 			}
 		}
 		if (key.name === "k" || key.name === "up") {
 			if (useVertical) {
+				setNavigationKey((k) => k + 1);
 				setActiveIndex((prev) => (prev > 0 ? prev - 1 : tools.length - 1));
 			}
 		}
@@ -92,6 +111,7 @@ export function App({
 		if (key.number && key.name) {
 			const num = parseInt(key.name, 10);
 			if (num >= 1 && num <= tools.length) {
+				setNavigationKey((k) => k + 1);
 				setActiveIndex(num - 1);
 			}
 		}
@@ -114,6 +134,23 @@ export function App({
 	const displayActiveIndex = activeToolIndex >= 0 ? activeToolIndex : 0;
 	const activeTool = activeTools[displayActiveIndex];
 
+	// During shutdown, ensure active tab stays valid as tabs are removed
+	useEffect(() => {
+		if (!isShuttingDown || activeTools.length === 0) return;
+
+		// If current tool is no longer in activeTools, switch to first available
+		if (activeToolIndex < 0 && activeTools.length > 0) {
+			const firstShuttingDown = activeTools[0];
+			if (firstShuttingDown) {
+				const originalIndex = tools.indexOf(firstShuttingDown);
+				if (originalIndex >= 0) {
+					setNavigationKey((k) => k + 1);
+					setActiveIndex(originalIndex);
+				}
+			}
+		}
+	}, [isShuttingDown, activeToolIndex, activeTools, tools]);
+
 	const shuttingDownCount = activeTools.length;
 	const hasShuttingDown = isShuttingDown && shuttingDownCount > 0;
 
@@ -133,6 +170,8 @@ export function App({
 			vertical={useVertical}
 			theme={theme}
 			width={terminalWidth}
+			showTabNumbers={showTabNumbers}
+			navigationKey={navigationKey}
 		/>
 	);
 
@@ -153,7 +192,6 @@ export function App({
 					padding={1}
 					flexDirection="column"
 					backgroundColor={theme.colors.background}
-					focused
 				>
 					<text fg={theme.colors.text}>No active processes</text>
 				</scrollbox>
@@ -177,9 +215,9 @@ export function App({
 					backgroundColor={theme.colors.warningBackground}
 				>
 					<text attributes={TextAttributes.BOLD} fg={theme.colors.warningText}>
-						WARNING: {shuttingDownCount} process
+						{StatusIcons.WARNING} WARNING: {shuttingDownCount} process
 						{shuttingDownCount > 1 ? "es" : ""} shutting down gracefully. Please
-						wait...
+						wait... Ctrl+C to force quit.
 					</text>
 				</box>
 			)}

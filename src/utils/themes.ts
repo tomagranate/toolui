@@ -1,3 +1,12 @@
+import {
+	ghosttyConfigToTerminalColors,
+	readGhosttyConfig,
+} from "./ghostty-config";
+import {
+	queryTerminalColorsBatch,
+	type TerminalColors,
+} from "./terminal-colors";
+
 export interface Theme {
 	name: string;
 	colors: {
@@ -169,4 +178,133 @@ export function mapAnsiColor(
 	}
 
 	return isBright ? color.bright : color.standard;
+}
+
+/**
+ * Calculates the relative luminance of a hex color.
+ * Used to determine if text should be light or dark for contrast.
+ * @param hex - Hex color string (e.g., "#1e1e2e")
+ * @returns Luminance value between 0 (black) and 1 (white)
+ */
+function getLuminance(hex: string): number {
+	// Remove # prefix if present
+	const color = hex.replace(/^#/, "");
+
+	// Parse RGB components
+	const r = Number.parseInt(color.substring(0, 2), 16) / 255;
+	const g = Number.parseInt(color.substring(2, 4), 16) / 255;
+	const b = Number.parseInt(color.substring(4, 6), 16) / 255;
+
+	// Apply sRGB gamma correction
+	const rLinear = r <= 0.03928 ? r / 12.92 : ((r + 0.055) / 1.055) ** 2.4;
+	const gLinear = g <= 0.03928 ? g / 12.92 : ((g + 0.055) / 1.055) ** 2.4;
+	const bLinear = b <= 0.03928 ? b / 12.92 : ((b + 0.055) / 1.055) ** 2.4;
+
+	// Calculate luminance using ITU-R BT.709 coefficients
+	return 0.2126 * rLinear + 0.7152 * gLinear + 0.0722 * bLinear;
+}
+
+/**
+ * Returns a contrasting text color (black or white) for the given background.
+ * Uses a lower threshold (0.4) to ensure better readability on medium-bright
+ * colors like yellow/gold which have luminance around 0.5.
+ */
+function getContrastingTextColor(backgroundColor: string): string {
+	const luminance = getLuminance(backgroundColor);
+	// Use black text on backgrounds with luminance > 0.4 for better contrast
+	// This ensures yellows/golds (luminance ~0.5) get dark text
+	return luminance > 0.4 ? "#000000" : "#ffffff";
+}
+
+/**
+ * Dims a hex color by mixing it with black.
+ * @param hex - Hex color string
+ * @param amount - Amount to dim (0-1, where 0 is no change and 1 is black)
+ */
+function dimColor(hex: string, amount: number): string {
+	const color = hex.replace(/^#/, "");
+	const r = Math.round(
+		Number.parseInt(color.substring(0, 2), 16) * (1 - amount),
+	);
+	const g = Math.round(
+		Number.parseInt(color.substring(2, 4), 16) * (1 - amount),
+	);
+	const b = Math.round(
+		Number.parseInt(color.substring(4, 6), 16) * (1 - amount),
+	);
+	return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+}
+
+/**
+ * Builds a Theme object from terminal colors.
+ * Maps ANSI palette colors to semantic theme colors.
+ *
+ * @param colors - Terminal colors from OSC query or config file
+ * @returns A complete Theme object
+ */
+export function buildTerminalTheme(colors: TerminalColors): Theme {
+	// Default fallbacks
+	const background = colors.background ?? "#000000";
+	const foreground = colors.foreground ?? "#ffffff";
+
+	// ANSI palette mapping:
+	// 0: black, 1: red, 2: green, 3: yellow, 4: blue, 5: magenta, 6: cyan, 7: white
+	const paletteRed = colors.palette[1] ?? "#ff0000";
+	const paletteGreen = colors.palette[2] ?? "#00ff00";
+	const paletteYellow = colors.palette[3] ?? "#ffff00";
+	const paletteBlue = colors.palette[4] ?? "#0000ff";
+
+	// Use blue for active tab background - it's more consistent across themes
+	// (magenta/slot 5 varies wildly: purple, orange, pink, etc.)
+	const activeTabBackground = paletteBlue;
+
+	// Derive contrasting text colors
+	const activeTabText = getContrastingTextColor(activeTabBackground);
+	const warningText = getContrastingTextColor(paletteYellow);
+
+	// Create a dimmed version of foreground for stopped status
+	const statusStopped = dimColor(foreground, 0.4);
+
+	return {
+		name: "Terminal",
+		colors: {
+			background,
+			text: foreground,
+			activeTabBackground,
+			activeTabText,
+			inactiveTabText: foreground,
+			statusRunning: paletteGreen,
+			statusShuttingDown: paletteYellow,
+			statusError: paletteRed,
+			statusStopped,
+			warningBackground: paletteYellow,
+			warningText,
+		},
+	};
+}
+
+/**
+ * Detects and builds a theme from the terminal's colors.
+ * Uses a hybrid approach:
+ * 1. First tries OSC escape sequence queries (works with any xterm-compatible terminal)
+ * 2. Falls back to parsing Ghostty config file
+ * 3. Returns undefined if neither method works
+ *
+ * @returns A Theme object or undefined if detection fails
+ */
+export async function getTerminalTheme(): Promise<Theme | undefined> {
+	// Try OSC query first (most portable)
+	const oscColors = await queryTerminalColorsBatch(300);
+	if (oscColors && (oscColors.foreground || oscColors.background)) {
+		return buildTerminalTheme(oscColors);
+	}
+
+	// Fall back to Ghostty config parsing
+	const ghosttyConfig = await readGhosttyConfig();
+	if (ghosttyConfig && (ghosttyConfig.foreground || ghosttyConfig.background)) {
+		const colors = ghosttyConfigToTerminalColors(ghosttyConfig);
+		return buildTerminalTheme(colors);
+	}
+
+	return undefined;
 }
