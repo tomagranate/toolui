@@ -16,10 +16,16 @@ import { TextInput } from "../TextInput";
 import { toast } from "../Toast";
 import {
 	calculateContentWidth,
+	calculateHighlightSegments,
+	calculateScrollInfo,
 	findMatchingLines,
 	getLineNumberWidth,
+	getLineSelection as getLineSelectionUtil,
+	getSelectedText as getSelectedTextUtil,
 	LINE_NUMBER_WIDTH_THRESHOLD,
+	type SelectionPosition,
 	truncateLine,
+	visualPositionToColumn,
 } from "./log-viewer-utils";
 
 interface LogViewerProps {
@@ -45,12 +51,6 @@ interface ScrollInfo {
 	linesBelow: number;
 }
 
-/** Selection position: line index + character column */
-interface SelectionPosition {
-	line: number;
-	col: number;
-}
-
 // Highlight search matches in a line by splitting into segments
 function highlightMatches(
 	line: string,
@@ -58,44 +58,24 @@ function highlightMatches(
 	matchColor: string,
 	textColor: string,
 ): React.ReactNode[] {
-	if (!query) return [line];
+	const segments = calculateHighlightSegments(line, query);
 
-	const parts: React.ReactNode[] = [];
-	const lowerLine = line.toLowerCase();
-	const lowerQuery = query.toLowerCase();
-	let lastIndex = 0;
-	let matchIndex = lowerLine.indexOf(lowerQuery);
-	let keyIndex = 0;
-
-	while (matchIndex !== -1) {
-		// Add text before match
-		if (matchIndex > lastIndex) {
-			parts.push(
-				<span key={keyIndex++} fg={textColor}>
-					{line.substring(lastIndex, matchIndex)}
-				</span>,
-			);
-		}
-		// Add highlighted match
-		parts.push(
-			<span key={keyIndex++} fg={matchColor}>
-				{line.substring(matchIndex, matchIndex + query.length)}
-			</span>,
-		);
-		lastIndex = matchIndex + query.length;
-		matchIndex = lowerLine.indexOf(lowerQuery, lastIndex);
+	// If single segment with no match, return plain text
+	if (segments.length === 1 && !segments[0]?.isMatch) {
+		return [line];
 	}
 
-	// Add remaining text
-	if (lastIndex < line.length) {
-		parts.push(
-			<span key={keyIndex++} fg={textColor}>
-				{line.substring(lastIndex)}
-			</span>,
+	// Build keys based on cumulative position to ensure uniqueness
+	let pos = 0;
+	return segments.map((segment) => {
+		const key = `${pos}-${segment.isMatch ? "m" : "t"}`;
+		pos += segment.text.length;
+		return (
+			<span key={key} fg={segment.isMatch ? matchColor : textColor}>
+				{segment.text}
+			</span>
 		);
-	}
-
-	return parts;
+	});
 }
 
 export function LogViewer({
@@ -138,6 +118,9 @@ export function LogViewer({
 	const isDraggingRef = useRef(false);
 	// Store start position in ref for reliable comparison (avoids async state issues)
 	const selectionStartRef = useRef<SelectionPosition | null>(null);
+	// Store the reference target position from mouseDown for consistent column calculation during drag
+	// This prevents issues where event.target changes as mouse moves over different elements
+	const dragTargetRefPos = useRef<{ x: number; y: number } | null>(null);
 
 	// Determine if line numbers should be shown
 	const shouldShowLineNumbers =
@@ -179,29 +162,14 @@ export function LogViewer({
 		const scrollbox = scrollboxRef.current;
 		if (!scrollbox) return;
 
-		const scrollTop = scrollbox.scrollTop;
-		const viewportHeight = scrollbox.viewport.height;
-		const contentHeight = scrollbox.scrollHeight;
+		const info = calculateScrollInfo({
+			scrollTop: scrollbox.scrollTop,
+			viewportHeight: scrollbox.viewport.height,
+			contentHeight: scrollbox.scrollHeight,
+			totalLines,
+		});
 
-		// If content fits in viewport, no scroll indicators needed
-		if (contentHeight <= viewportHeight) {
-			setScrollInfo({ linesAbove: 0, linesBelow: 0 });
-			return;
-		}
-
-		// Calculate as percentage of total scrollable area, then apply to logical lines
-		// This correctly handles wrapped lines by using scroll ratio instead of raw heights
-		const maxScroll = contentHeight - viewportHeight;
-		const scrollRatio = maxScroll > 0 ? scrollTop / maxScroll : 0;
-
-		// Estimate visible lines (may be less than viewport if lines are wrapped)
-		const estimatedVisibleLines = Math.min(viewportHeight, totalLines);
-		const scrollableLines = Math.max(0, totalLines - estimatedVisibleLines);
-
-		const linesAbove = Math.round(scrollRatio * scrollableLines);
-		const linesBelow = Math.max(0, scrollableLines - linesAbove);
-
-		setScrollInfo({ linesAbove, linesBelow });
+		setScrollInfo(info);
 	}, [totalLines]);
 
 	// Scroll to bottom when switching tabs (tool changes)
@@ -302,69 +270,35 @@ export function LogViewer({
 		[renderer],
 	);
 
-	// Convert mouse x position to character column within line content
-	// x is global terminal coordinate, targetX is the element's absolute x position
-	const xToCol = useCallback(
-		(globalX: number, targetX: number, lineLength: number): number => {
-			// Calculate local x position within the line box
-			// The target's x already points to the start of this element
-			const localX = globalX - targetX;
-			// Note: We don't subtract the gutter here because the event target
-			// is the content text, which is already positioned after the gutter
-			return Math.max(0, Math.min(localX, lineLength));
-		},
-		[],
-	);
-
-	// Normalize selection so start is always before end
-	const normalizeSelection = useCallback(
+	// Convert mouse position to character column within line content
+	// Handles word-wrapped lines by calculating actual wrap break points
+	const positionToCol = useCallback(
 		(
-			start: SelectionPosition | null,
-			end: SelectionPosition | null,
-		): { start: SelectionPosition; end: SelectionPosition } | null => {
-			if (!start || !end) return null;
-			// Compare positions: first by line, then by column
-			if (
-				start.line < end.line ||
-				(start.line === end.line && start.col <= end.col)
-			) {
-				return { start, end };
-			}
-			return { start: end, end: start };
+			globalX: number,
+			globalY: number,
+			targetX: number,
+			targetY: number,
+			lineText: string,
+			wrapWidth: number,
+		): number => {
+			// Calculate local position within the text element
+			const localX = globalX - targetX;
+			const localY = globalY - targetY;
+
+			// Calculate which visual row we're on (0-indexed)
+			// Each visual row is 1 unit tall in terminal coordinates
+			const visualRow = Math.max(0, Math.floor(localY));
+
+			// Use word-wrap-aware calculation to get the actual column
+			return visualPositionToColumn(visualRow, localX, lineText, wrapWidth);
 		},
 		[],
 	);
 
 	// Get selected text from character-level selection
 	const getSelectedText = useCallback((): string => {
-		const normalized = normalizeSelection(selectionStart, selectionEnd);
-		if (!normalized) return "";
-
-		const { start, end } = normalized;
-
-		if (start.line === end.line) {
-			// Single line selection
-			const line = logLines[start.line] ?? "";
-			return line.substring(start.col, end.col);
-		}
-
-		// Multi-line selection
-		const lines: string[] = [];
-		for (let i = start.line; i <= end.line; i++) {
-			const line = logLines[i] ?? "";
-			if (i === start.line) {
-				// First line: from start col to end
-				lines.push(line.substring(start.col));
-			} else if (i === end.line) {
-				// Last line: from start to end col
-				lines.push(line.substring(0, end.col));
-			} else {
-				// Middle lines: entire line
-				lines.push(line);
-			}
-		}
-		return lines.join("\n");
-	}, [selectionStart, selectionEnd, logLines, normalizeSelection]);
+		return getSelectedTextUtil(selectionStart, selectionEnd, logLines);
+	}, [selectionStart, selectionEnd, logLines]);
 
 	// Get selection range for a specific line (returns null if line not in selection)
 	const getLineSelection = useCallback(
@@ -372,34 +306,14 @@ export function LogViewer({
 			lineIndex: number,
 			lineLength: number,
 		): { startCol: number; endCol: number } | null => {
-			const normalized = normalizeSelection(selectionStart, selectionEnd);
-			if (!normalized) return null;
-
-			const { start, end } = normalized;
-
-			if (lineIndex < start.line || lineIndex > end.line) {
-				return null; // Line not in selection
-			}
-
-			if (start.line === end.line && lineIndex === start.line) {
-				// Single line selection
-				return { startCol: start.col, endCol: end.col };
-			}
-
-			if (lineIndex === start.line) {
-				// First line of multi-line selection
-				return { startCol: start.col, endCol: lineLength };
-			}
-
-			if (lineIndex === end.line) {
-				// Last line of multi-line selection
-				return { startCol: 0, endCol: end.col };
-			}
-
-			// Middle line - entire line selected
-			return { startCol: 0, endCol: lineLength };
+			return getLineSelectionUtil(
+				lineIndex,
+				lineLength,
+				selectionStart,
+				selectionEnd,
+			);
 		},
-		[selectionStart, selectionEnd, normalizeSelection],
+		[selectionStart, selectionEnd],
 	);
 
 	// Handle mouse down - start potential selection
@@ -409,7 +323,18 @@ export function LogViewer({
 			isDraggingRef.current = true;
 			const line = logLines[lineIndex] ?? "";
 			const targetX = event.target?.x ?? 0;
-			const col = xToCol(event.x, targetX, line.length);
+			const targetY = event.target?.y ?? 0;
+			// Store the reference position for consistent calculations during drag
+			// This prevents issues when event.target changes as mouse moves over different elements
+			dragTargetRefPos.current = { x: targetX, y: targetY };
+			const col = positionToCol(
+				event.x,
+				event.y,
+				targetX,
+				targetY,
+				line,
+				contentWidth,
+			);
 			const pos = { line: lineIndex, col };
 			setSelectionStart(pos);
 			setSelectionEnd(pos);
@@ -424,7 +349,7 @@ export function LogViewer({
 				lastClick.lineIndex === lineIndex &&
 				now - lastClick.time < DOUBLE_CLICK_THRESHOLD;
 		},
-		[logLines, xToCol],
+		[logLines, positionToCol, contentWidth],
 	);
 
 	// Handle mouse drag - update selection end
@@ -432,11 +357,22 @@ export function LogViewer({
 		(lineIndex: number, event: MouseEvent) => {
 			if (!isDraggingRef.current) return;
 			const line = logLines[lineIndex] ?? "";
-			const targetX = event.target?.x ?? 0;
-			const col = xToCol(event.x, targetX, line.length);
+			// Use the stored reference position from mouseDown for consistent column calculation
+			// This prevents offset jumps when dragging across different elements
+			const refPos = dragTargetRefPos.current;
+			const targetX = refPos?.x ?? event.target?.x ?? 0;
+			const targetY = refPos?.y ?? event.target?.y ?? 0;
+			const col = positionToCol(
+				event.x,
+				event.y,
+				targetX,
+				targetY,
+				line,
+				contentWidth,
+			);
 			setSelectionEnd({ line: lineIndex, col });
 		},
-		[logLines, xToCol],
+		[logLines, positionToCol, contentWidth],
 	);
 
 	// Handle mouse up - finish selection and copy
@@ -446,10 +382,22 @@ export function LogViewer({
 			isDraggingRef.current = false;
 
 			const line = logLines[lineIndex] ?? "";
-			const targetX = event.target?.x ?? 0;
-			const col = xToCol(event.x, targetX, line.length);
+			// Use the stored reference position from mouseDown for consistent column calculation
+			const refPos = dragTargetRefPos.current;
+			const targetX = refPos?.x ?? event.target?.x ?? 0;
+			const targetY = refPos?.y ?? event.target?.y ?? 0;
+			const col = positionToCol(
+				event.x,
+				event.y,
+				targetX,
+				targetY,
+				line,
+				contentWidth,
+			);
 			const endPos = { line: lineIndex, col };
 			setSelectionEnd(endPos);
+			// Clear the reference position
+			dragTargetRefPos.current = null;
 
 			// Use ref for start position (more reliable than async state)
 			const startPos = selectionStartRef.current;
@@ -515,7 +463,7 @@ export function LogViewer({
 				}
 			}
 		},
-		[logLines, xToCol, copyText, getSelectedText],
+		[logLines, positionToCol, contentWidth, copyText, getSelectedText],
 	);
 
 	return (

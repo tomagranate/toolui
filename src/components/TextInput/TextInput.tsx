@@ -1,4 +1,6 @@
+import type { InputRenderable, PasteEvent } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
+import { useRef } from "react";
 import type { Theme } from "../../lib/theme";
 
 interface TextInputProps {
@@ -44,6 +46,17 @@ export function TextInput({
 	flexGrow = 1,
 }: TextInputProps) {
 	const { colors } = theme;
+	const inputRef = useRef<InputRenderable>(null);
+
+	// Handle paste events
+	const handlePaste = (event: PasteEvent) => {
+		if (!focused) return;
+		const input = inputRef.current;
+		if (input && event.text) {
+			// Insert the pasted text at the current cursor position
+			input.insertText(event.text);
+		}
+	};
 
 	// Handle keyboard extensions
 	useKeyboard((key) => {
@@ -77,9 +90,11 @@ export function TextInput({
 				</text>
 			)}
 			<input
+				ref={inputRef}
 				value={value}
 				onInput={onValueChange}
 				onSubmit={onSubmit}
+				onPaste={handlePaste}
 				focused={focused}
 				textColor={colors.text}
 				backgroundColor={colors.background}
