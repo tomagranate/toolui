@@ -13,6 +13,7 @@ const KEYBOARD_SHORTCUTS = [
 	{ key: "h/l", description: "Switch tabs (horizontal layout)" },
 	{ key: "1-9", description: "Jump to tab by number" },
 	{ key: "/", description: "Search logs" },
+	{ key: "w", description: "Toggle line wrapping" },
 	{ key: "Esc", description: "Cancel/clear" },
 	{ key: "q", description: "Quit" },
 	{ key: "Ctrl+C", description: "Force quit" },

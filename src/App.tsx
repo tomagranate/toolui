@@ -52,6 +52,7 @@ export function App({
 	>(new Map());
 	const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 	const [shortcutsOpen, setShortcutsOpen] = useState(false);
+	const [lineWrap, setLineWrap] = useState(true); // Line wrapping enabled by default
 	const { width: terminalWidth } = useTerminalDimensions();
 
 	// Get search state for a specific tab (returns default if not set)
@@ -102,6 +103,11 @@ export function App({
 		}
 	}, [processManager, initialTools.length]);
 
+	// Toggle line wrap function (used by both keyboard and command palette)
+	const toggleLineWrap = useCallback(() => {
+		setLineWrap((prev) => !prev);
+	}, []);
+
 	// Register commands for the command palette
 	useEffect(() => {
 		const commands = [
@@ -115,6 +121,13 @@ export function App({
 						updateTabSearchState(currentToolName, { searchMode: true });
 					}
 				},
+			},
+			{
+				id: "toggle-line-wrap",
+				label: lineWrap ? "Disable line wrapping" : "Enable line wrapping",
+				shortcut: "w",
+				category: "View",
+				action: toggleLineWrap,
 			},
 			{
 				id: "quit",
@@ -159,7 +172,15 @@ export function App({
 		return () => {
 			commandPalette.clear();
 		};
-	}, [tools, processManager, renderer, currentToolName, updateTabSearchState]);
+	}, [
+		tools,
+		processManager,
+		renderer,
+		currentToolName,
+		updateTabSearchState,
+		lineWrap,
+		toggleLineWrap,
+	]);
 
 	// Handle keyboard input
 	useKeyboard(async (key) => {
@@ -200,6 +221,12 @@ export function App({
 		// Shortcuts modal: ?
 		if (key.name === "?") {
 			setShortcutsOpen(true);
+			return;
+		}
+
+		// Toggle line wrapping: w
+		if (key.name === "w") {
+			toggleLineWrap();
 			return;
 		}
 
@@ -307,6 +334,10 @@ export function App({
 
 	const showLineNumbers = config.ui?.showLineNumbers ?? "auto";
 
+	// Calculate sidebar width when in vertical mode (for LogViewer truncation calculation)
+	// Vertical TabBar has width={20} + border (2 chars) = 22 chars
+	const sidebarWidth = useVertical ? 22 : 0;
+
 	const logViewerComponent = (
 		<box
 			flexGrow={1}
@@ -336,6 +367,8 @@ export function App({
 						updateTabSearchState(activeTool.config.name, { filterMode: filter })
 					}
 					showLineNumbers={showLineNumbers}
+					lineWrap={lineWrap}
+					sidebarWidth={sidebarWidth}
 				/>
 			) : (
 				<scrollbox

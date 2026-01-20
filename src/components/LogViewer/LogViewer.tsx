@@ -15,9 +15,11 @@ import type { ToolState } from "../../types";
 import { TextInput } from "../TextInput";
 import { toast } from "../Toast";
 import {
+	calculateContentWidth,
 	findMatchingLines,
 	getLineNumberWidth,
 	LINE_NUMBER_WIDTH_THRESHOLD,
+	truncateLine,
 } from "./log-viewer-utils";
 
 interface LogViewerProps {
@@ -32,6 +34,10 @@ interface LogViewerProps {
 	onFilterModeChange: (filter: boolean) => void;
 	/** Control line number visibility: true = always, false = never, "auto" = based on terminal width */
 	showLineNumbers?: boolean | "auto";
+	/** Whether to wrap long lines (true) or truncate them (false) */
+	lineWrap?: boolean;
+	/** Width of sidebar (when in vertical layout mode), used for truncation calculation */
+	sidebarWidth?: number;
 }
 
 interface ScrollInfo {
@@ -103,6 +109,8 @@ export function LogViewer({
 	onSearchQueryChange,
 	onFilterModeChange,
 	showLineNumbers = "auto",
+	lineWrap = true,
+	sidebarWidth = 0,
 }: LogViewerProps) {
 	const { colors } = theme;
 	const scrollboxRef = useRef<ScrollBoxRenderable>(null);
@@ -138,12 +146,15 @@ export function LogViewer({
 			terminalWidth >= LINE_NUMBER_WIDTH_THRESHOLD);
 
 	// Convert logs to plain text (just concatenate segment text)
+	// Note: tool.logs.length is intentionally included to detect array mutations
+	// since the logs array reference stays the same when items are pushed
+	// biome-ignore lint/correctness/useExhaustiveDependencies: length detects array mutations
 	const logLines = useMemo(
 		() =>
 			tool.logs.map((segments) =>
 				segments.map((segment) => segment.text).join(""),
 			),
-		[tool.logs],
+		[tool.logs, tool.logs.length],
 	);
 
 	const totalLines = logLines.length;
@@ -155,6 +166,14 @@ export function LogViewer({
 		[logLines, searchQuery],
 	);
 
+	// Calculate available width for line content (for truncation when lineWrap is off)
+	const contentWidth = calculateContentWidth({
+		terminalWidth,
+		sidebarWidth,
+		showLineNumbers: shouldShowLineNumbers,
+		lineNumberWidth,
+	});
+
 	// Update scroll info based on current scroll position
 	const updateScrollInfo = useCallback(() => {
 		const scrollbox = scrollboxRef.current;
@@ -164,15 +183,39 @@ export function LogViewer({
 		const viewportHeight = scrollbox.viewport.height;
 		const contentHeight = scrollbox.scrollHeight;
 
-		// Calculate lines above and below (assuming 1 line = 1 unit height)
-		const linesAbove = Math.floor(scrollTop);
-		const linesBelow = Math.max(
-			0,
-			Math.floor(contentHeight - scrollTop - viewportHeight),
-		);
+		// If content fits in viewport, no scroll indicators needed
+		if (contentHeight <= viewportHeight) {
+			setScrollInfo({ linesAbove: 0, linesBelow: 0 });
+			return;
+		}
+
+		// Calculate as percentage of total scrollable area, then apply to logical lines
+		// This correctly handles wrapped lines by using scroll ratio instead of raw heights
+		const maxScroll = contentHeight - viewportHeight;
+		const scrollRatio = maxScroll > 0 ? scrollTop / maxScroll : 0;
+
+		// Estimate visible lines (may be less than viewport if lines are wrapped)
+		const estimatedVisibleLines = Math.min(viewportHeight, totalLines);
+		const scrollableLines = Math.max(0, totalLines - estimatedVisibleLines);
+
+		const linesAbove = Math.round(scrollRatio * scrollableLines);
+		const linesBelow = Math.max(0, scrollableLines - linesAbove);
 
 		setScrollInfo({ linesAbove, linesBelow });
-	}, []);
+	}, [totalLines]);
+
+	// Scroll to bottom when switching tabs (tool changes)
+	// biome-ignore lint/correctness/useExhaustiveDependencies: only trigger on tool name change
+	useEffect(() => {
+		// Use setTimeout to ensure the scrollbox has rendered with new content
+		const timeout = setTimeout(() => {
+			const scrollbox = scrollboxRef.current;
+			if (scrollbox) {
+				scrollbox.scrollTo(scrollbox.scrollHeight);
+			}
+		}, 0);
+		return () => clearTimeout(timeout);
+	}, [tool.config.name]);
 
 	// Update scroll info when logs change
 	// biome-ignore lint/correctness/useExhaustiveDependencies: totalLines triggers update when new logs arrive
@@ -601,23 +644,35 @@ export function LogViewer({
 								line.length,
 							);
 
+							// Get display line (truncated if lineWrap is off)
+							const displayLine = truncateLine(line, contentWidth, lineWrap);
+
 							// Render line content with character-level selection highlighting
 							const renderLineContent = () => {
-								// If flashing, highlight entire line
+								// If flashing, highlight entire line (use display line for visual)
 								if (isFlashing) {
 									return (
 										<span bg={colors.selectedLineBackground} fg={colors.text}>
-											{line}
+											{displayLine}
 										</span>
 									);
 								}
 
-								// If line has selection
+								// If line has selection (apply to display line for visual)
 								if (lineSelection) {
 									const { startCol, endCol } = lineSelection;
-									const before = line.substring(0, startCol);
-									const selected = line.substring(startCol, endCol);
-									const after = line.substring(endCol);
+									// Clamp selection to display line length
+									const displayStartCol = Math.min(
+										startCol,
+										displayLine.length,
+									);
+									const displayEndCol = Math.min(endCol, displayLine.length);
+									const before = displayLine.substring(0, displayStartCol);
+									const selected = displayLine.substring(
+										displayStartCol,
+										displayEndCol,
+									);
+									const after = displayLine.substring(displayEndCol);
 
 									return (
 										<>
@@ -635,10 +690,10 @@ export function LogViewer({
 									);
 								}
 
-								// Search match highlighting
+								// Search match highlighting (use display line)
 								if (searchQuery && isMatch) {
 									return highlightMatches(
-										line,
+										displayLine,
 										searchQuery,
 										colors.searchMatchText,
 										colors.text,
@@ -646,7 +701,7 @@ export function LogViewer({
 								}
 
 								// Plain text
-								return line;
+								return displayLine;
 							};
 
 							// Calculate gutter width for proper column sizing
