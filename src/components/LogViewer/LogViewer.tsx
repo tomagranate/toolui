@@ -34,6 +34,7 @@ interface LogViewerProps {
 	onSearchModeChange: (active: boolean) => void;
 	onSearchQueryChange: (query: string) => void;
 	onFilterModeChange: (filter: boolean) => void;
+	onCurrentMatchIndexChange: (index: number) => void;
 	/** Control line number visibility: true = always, false = never, "auto" = based on terminal width */
 	showLineNumbers?: boolean | "auto";
 	/** Whether to wrap long lines (true) or truncate them (false) */
@@ -84,6 +85,7 @@ export function LogViewer({
 	onSearchModeChange,
 	onSearchQueryChange,
 	onFilterModeChange,
+	onCurrentMatchIndexChange,
 	showLineNumbers = "auto",
 	lineWrap = true,
 	sidebarWidth = 0,
@@ -205,6 +207,42 @@ export function LogViewer({
 		}
 	}, []);
 
+	// Navigate to a specific match index and flash the line
+	const navigateToMatch = useCallback(
+		(newIndex: number) => {
+			if (matchingLines.length === 0) return;
+
+			// Wrap around
+			let index = newIndex;
+			if (index < 0) index = matchingLines.length - 1;
+			if (index >= matchingLines.length) index = 0;
+
+			onCurrentMatchIndexChange(index);
+
+			const lineIndex = matchingLines[index];
+			if (lineIndex !== undefined) {
+				const scrollbox = scrollboxRef.current;
+				if (scrollbox) {
+					// Calculate the scroll target based on whether filter mode is on
+					// In filter mode, we scroll to the match index (display index)
+					// In normal mode, we scroll to the original line index
+					const scrollTarget = filterMode && searchQuery ? index : lineIndex;
+
+					const viewportHeight = scrollbox.viewport.height;
+					const targetScroll = Math.max(
+						0,
+						scrollTarget - Math.floor(viewportHeight / 2),
+					);
+					scrollbox.scrollTo(targetScroll);
+				}
+				// Flash the line (using original index for the flash state)
+				setFlashingLine(lineIndex);
+				setTimeout(() => setFlashingLine(null), 150);
+			}
+		},
+		[matchingLines, onCurrentMatchIndexChange, filterMode, searchQuery],
+	);
+
 	// Handle keyboard input
 	useKeyboard((key) => {
 		// Handle search mode input
@@ -216,6 +254,15 @@ export function LogViewer({
 			// Toggle filter mode with Ctrl+H
 			if (key.ctrl && key.name === "h") {
 				onFilterModeChange(!filterMode);
+				return;
+			}
+			// Navigate to next/previous match with up/down arrows
+			if (key.name === "up") {
+				navigateToMatch(currentMatchIndex - 1);
+				return;
+			}
+			if (key.name === "down") {
+				navigateToMatch(currentMatchIndex + 1);
 				return;
 			}
 			// Let TextInput and the input component handle text editing
@@ -319,10 +366,10 @@ export function LogViewer({
 				<box
 					height={3}
 					width="100%"
+					backgroundColor={colors.surface1}
 					border
 					borderStyle="single"
 					borderColor={colors.lineNumberText}
-					backgroundColor={colors.background}
 					paddingLeft={1}
 					paddingRight={1}
 					flexDirection="row"
@@ -379,7 +426,7 @@ export function LogViewer({
 					width="100%"
 					justifyContent="center"
 					alignItems="center"
-					backgroundColor={colors.background}
+					backgroundColor={colors.surface0}
 					onMouseUp={scrollToTop}
 				>
 					<text fg={colors.inactiveTabText}>
@@ -392,7 +439,7 @@ export function LogViewer({
 				ref={scrollboxRef}
 				flexGrow={1}
 				height="100%"
-				backgroundColor={colors.background}
+				backgroundColor={colors.surface0}
 				stickyScroll
 				stickyStart="bottom"
 				scrollbarOptions={{
@@ -469,14 +516,15 @@ export function LogViewer({
 								<box
 									key={`log-${tool.config.name}-${originalIndex}`}
 									flexDirection="row"
-									backgroundColor={colors.background}
+									backgroundColor={colors.surface0}
 									onMouseDown={() => handleMouseDown(originalIndex)}
 								>
-									{/* Line number gutter - fixed width column with right border */}
+									{/* Line number gutter - muted text with right border */}
 									{shouldShowLineNumbers && (
 										<box
 											width={gutterColumnWidth}
 											flexShrink={0}
+											backgroundColor={colors.surface0}
 											border={["right"]}
 											borderStyle="single"
 											borderColor={colors.lineNumberText}
@@ -502,20 +550,22 @@ export function LogViewer({
 				)}
 			</scrollbox>
 
-			{/* Bottom scroll indicator */}
-			{scrollInfo.linesBelow > 0 && (
+			{/* Bottom scroll indicator or spacer */}
+			{scrollInfo.linesBelow > 0 ? (
 				<box
 					height={1}
 					width="100%"
 					justifyContent="center"
 					alignItems="center"
-					backgroundColor={colors.background}
+					backgroundColor={colors.surface0}
 					onMouseUp={scrollToBottom}
 				>
 					<text fg={colors.inactiveTabText}>
 						↓ {scrollInfo.linesBelow} more ↓
 					</text>
 				</box>
+			) : (
+				<box height={1} width="100%" backgroundColor={colors.surface0} />
 			)}
 		</box>
 	);

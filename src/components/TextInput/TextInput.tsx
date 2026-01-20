@@ -97,10 +97,10 @@ export function TextInput({
 				onPaste={handlePaste}
 				focused={focused}
 				textColor={colors.text}
-				backgroundColor={colors.background}
+				backgroundColor={colors.surface0}
 				focusedTextColor={colors.text}
-				focusedBackgroundColor={colors.background}
-				cursorColor={colors.text}
+				focusedBackgroundColor={colors.surface0}
+				cursorColor={colors.activeTabBackground}
 				flexGrow={1}
 			/>
 		</box>

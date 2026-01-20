@@ -1,6 +1,6 @@
-import { TextAttributes } from "@opentui/core";
+import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Theme } from "../../lib/theme";
 import { TextInput } from "../TextInput";
 import { type Command, commandPalette } from "./command-palette-store";
@@ -41,6 +41,7 @@ export function CommandPalette({
 	const [selectedIndex, setSelectedIndex] = useState(0);
 	// Track commands to trigger re-renders when they change
 	const [_commands, setCommands] = useState<Command[]>([]);
+	const scrollboxRef = useRef<ScrollBoxRenderable>(null);
 
 	// Calculate modal dimensions
 	const modalWidth = Math.min(60, terminalWidth - 4);
@@ -105,6 +106,24 @@ export function CommandPalette({
 		setSelectedIndex(0);
 	}, []);
 
+	// Scroll to keep selected item visible
+	const scrollToSelected = useCallback((index: number) => {
+		const scrollbox = scrollboxRef.current;
+		if (!scrollbox) return;
+
+		const viewportHeight = scrollbox.viewport.height;
+		const scrollTop = scrollbox.scrollTop;
+
+		// If item is above viewport, scroll up
+		if (index < scrollTop) {
+			scrollbox.scrollTo(index);
+		}
+		// If item is below viewport, scroll down
+		else if (index >= scrollTop + viewportHeight) {
+			scrollbox.scrollTo(index - viewportHeight + 1);
+		}
+	}, []);
+
 	// Handle keyboard input when open
 	useKeyboard((key) => {
 		if (!isOpen) return;
@@ -121,16 +140,18 @@ export function CommandPalette({
 		}
 
 		if (key.name === "up" || (key.ctrl && key.name === "p")) {
-			setSelectedIndex((prev) =>
-				prev > 0 ? prev - 1 : displayItems.length - 1,
-			);
+			const newIndex =
+				selectedIndex > 0 ? selectedIndex - 1 : displayItems.length - 1;
+			setSelectedIndex(newIndex);
+			scrollToSelected(newIndex);
 			return;
 		}
 
 		if (key.name === "down" || (key.ctrl && key.name === "n")) {
-			setSelectedIndex((prev) =>
-				prev < displayItems.length - 1 ? prev + 1 : 0,
-			);
+			const newIndex =
+				selectedIndex < displayItems.length - 1 ? selectedIndex + 1 : 0;
+			setSelectedIndex(newIndex);
+			scrollToSelected(newIndex);
 			return;
 		}
 
@@ -158,45 +179,68 @@ export function CommandPalette({
 			<box
 				width={modalWidth}
 				flexDirection="column"
-				backgroundColor={colors.background}
-				border
-				borderStyle="rounded"
+				backgroundColor={colors.surface2}
 			>
-				{/* Header */}
+				{/* Header with close button */}
 				<box
-					height={1}
 					paddingLeft={1}
 					paddingRight={1}
 					backgroundColor={colors.activeTabBackground}
+					flexDirection="row"
+					justifyContent="space-between"
 				>
 					<text attributes={TextAttributes.BOLD} fg={colors.activeTabText}>
 						{title}
+					</text>
+					<text
+						fg={colors.lineNumberText}
+						attributes={TextAttributes.BOLD}
+						{...({
+							onMouseDown: onClose,
+						} as Record<string, unknown>)}
+					>
+						x
 					</text>
 				</box>
 
 				{/* Search input (only in command mode) */}
 				{!showShortcuts && (
-					<box height={1} paddingLeft={1} paddingRight={1}>
-						<TextInput
-							value={query}
-							onValueChange={handleQueryChange}
-							onEmpty={onClose}
-							onSubmit={executeSelected}
-							focused={isOpen && !showShortcuts}
-							theme={theme}
-							prefix="> "
-						/>
+					<box
+						paddingLeft={1}
+						paddingRight={1}
+						backgroundColor={colors.surface1}
+					>
+						<box
+							border
+							borderStyle="single"
+							borderColor={colors.lineNumberText}
+							paddingLeft={1}
+							paddingRight={1}
+						>
+							<TextInput
+								value={query}
+								onValueChange={handleQueryChange}
+								onEmpty={onClose}
+								onSubmit={executeSelected}
+								focused={isOpen && !showShortcuts}
+								theme={theme}
+								prefix="> "
+								prefixBold
+								prefixColor={colors.activeTabBackground}
+							/>
+						</box>
 					</box>
 				)}
 
 				{/* Command/shortcut list */}
 				<scrollbox
+					ref={scrollboxRef}
 					height={Math.min(displayItems.length, maxListHeight)}
-					backgroundColor={colors.background}
+					backgroundColor={colors.surface2}
 				>
 					{displayItems.length === 0 ? (
 						<box paddingLeft={1} paddingRight={1}>
-							<text fg={colors.lineNumberText}>No matching commands</text>
+							<text fg={colors.inactiveTabText}>No matching commands</text>
 						</box>
 					) : (
 						displayItems.map((item, index) => {
@@ -208,15 +252,16 @@ export function CommandPalette({
 									paddingLeft={1}
 									paddingRight={1}
 									backgroundColor={
-										isSelected
-											? colors.selectedLineBackground
-											: colors.background
+										isSelected ? colors.surface1 : colors.surface2
 									}
 								>
 									<text fg={isSelected ? colors.text : colors.inactiveTabText}>
 										{item.label}
 										{item.shortcut && (
-											<span fg={colors.lineNumberText}> ({item.shortcut})</span>
+											<span fg={colors.inactiveTabText}>
+												{" "}
+												({item.shortcut})
+											</span>
 										)}
 									</text>
 								</box>
@@ -224,20 +269,6 @@ export function CommandPalette({
 						})
 					)}
 				</scrollbox>
-
-				{/* Footer hint */}
-				<box
-					height={1}
-					paddingLeft={1}
-					paddingRight={1}
-					backgroundColor={colors.background}
-				>
-					<text fg={colors.lineNumberText}>
-						{showShortcuts
-							? "Esc: close"
-							: "↑↓: navigate | Enter: select | Esc: close"}
-					</text>
-				</box>
 			</box>
 		</box>
 	);

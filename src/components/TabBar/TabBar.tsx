@@ -183,7 +183,8 @@ export function TabBar({
 		if (index === hoveredIndex) {
 			return colors.activeTabBackground; // Use same as active for hover
 		}
-		return colors.background;
+		// Vertical sidebar uses surface1, horizontal uses surface0
+		return vertical ? colors.surface1 : colors.surface0;
 	};
 
 	const getStatusIcon = (status: ToolState["status"]) => {
@@ -221,10 +222,8 @@ export function TabBar({
 				width={20}
 				height="100%"
 				flexDirection="column"
-				border
-				borderStyle="rounded"
 				padding={1}
-				backgroundColor={colors.background}
+				backgroundColor={colors.surface1}
 			>
 				{tools.map((tool, index) => (
 					<box
@@ -259,10 +258,10 @@ export function TabBar({
 			height={3}
 			width="100%"
 			flexDirection="row"
+			backgroundColor={colors.surface0}
 			border
-			borderStyle="rounded"
-			padding={0}
-			backgroundColor={colors.background}
+			borderStyle="single"
+			borderColor={colors.lineNumberText}
 			onMouseScroll={(event) => {
 				if (event.scroll) {
 					handleScroll(event.scroll.direction);
@@ -276,7 +275,7 @@ export function TabBar({
 					height={1}
 					paddingLeft={1}
 					paddingRight={1}
-					backgroundColor={colors.background}
+					backgroundColor={colors.surface0}
 					{...({
 						onMouseDown: hasMoreLeft ? pageLeft : undefined,
 						onMouseEnter: hasMoreLeft ? () => setHoveredIndex(-1) : undefined,
@@ -289,7 +288,7 @@ export function TabBar({
 								? hoveredIndex === -1
 									? colors.activeTabText
 									: colors.inactiveTabText
-								: colors.background
+								: colors.surface0
 						}
 					>
 						{hasMoreLeft ? "◀" : " "}
@@ -341,7 +340,7 @@ export function TabBar({
 					height={1}
 					paddingLeft={1}
 					paddingRight={1}
-					backgroundColor={colors.background}
+					backgroundColor={colors.surface0}
 					{...({
 						onMouseDown: hasMoreRight ? pageRight : undefined,
 						onMouseEnter: hasMoreRight ? () => setHoveredIndex(-2) : undefined,
@@ -356,7 +355,7 @@ export function TabBar({
 								? hoveredIndex === -2
 									? colors.activeTabText
 									: colors.inactiveTabText
-								: colors.background
+								: colors.surface0
 						}
 					>
 						{hasMoreRight ? "▶" : " "}

@@ -27,13 +27,21 @@ export interface Theme {
 		searchMatchBackground: string;
 		searchMatchText: string;
 		searchSlash: string;
+		// Surface hierarchy (darker to lighter in dark mode)
+		surface0: string; // Base - LogViewer content area
+		surface1: string; // Elevated - TabBar, HelpBar
+		surface2: string; // Overlay - Modals, Toasts, Search bar
+		// Toast border colors
+		toastBorderSuccess: string;
+		toastBorderError: string;
+		toastBorderInfo: string;
 	};
 }
 
 const DEFAULT_THEME: Theme = {
 	name: "Default",
 	colors: {
-		background: "black",
+		background: "#000000",
 		text: "white",
 		activeTabBackground: "#333333",
 		activeTabText: "white",
@@ -49,6 +57,12 @@ const DEFAULT_THEME: Theme = {
 		searchMatchBackground: "#444400",
 		searchMatchText: "#ffff00",
 		searchSlash: "#ffff00",
+		surface0: "#000000",
+		surface1: "#1a1a1a",
+		surface2: "#2a2a2a",
+		toastBorderSuccess: "#00ff00",
+		toastBorderError: "#ff0000",
+		toastBorderInfo: "#333333",
 	},
 };
 
@@ -73,6 +87,12 @@ export const themes: Record<string, Theme> = {
 			searchMatchBackground: "#50fa7b33",
 			searchMatchText: "#50fa7b",
 			searchSlash: "#bd93f9",
+			surface0: "#282a36",
+			surface1: "#44475a",
+			surface2: "#6272a4",
+			toastBorderSuccess: "#50fa7b",
+			toastBorderError: "#ff5555",
+			toastBorderInfo: "#bd93f9",
 		},
 	},
 	nord: {
@@ -94,6 +114,12 @@ export const themes: Record<string, Theme> = {
 			searchMatchBackground: "#ebcb8b33",
 			searchMatchText: "#ebcb8b",
 			searchSlash: "#5e81ac",
+			surface0: "#2e3440",
+			surface1: "#3b4252",
+			surface2: "#434c5e",
+			toastBorderSuccess: "#a3be8c",
+			toastBorderError: "#bf616a",
+			toastBorderInfo: "#5e81ac",
 		},
 	},
 	onedark: {
@@ -115,6 +141,12 @@ export const themes: Record<string, Theme> = {
 			searchMatchBackground: "#e5c07b33",
 			searchMatchText: "#e5c07b",
 			searchSlash: "#61afef",
+			surface0: "#282c34",
+			surface1: "#3e4451",
+			surface2: "#4b5263",
+			toastBorderSuccess: "#98c379",
+			toastBorderError: "#e06c75",
+			toastBorderInfo: "#61afef",
 		},
 	},
 	solarized: {
@@ -136,6 +168,12 @@ export const themes: Record<string, Theme> = {
 			searchMatchBackground: "#b5890033",
 			searchMatchText: "#b58900",
 			searchSlash: "#268bd2",
+			surface0: "#002b36",
+			surface1: "#073642",
+			surface2: "#586e75",
+			toastBorderSuccess: "#859900",
+			toastBorderError: "#dc322f",
+			toastBorderInfo: "#268bd2",
 		},
 	},
 	gruvbox: {
@@ -157,6 +195,12 @@ export const themes: Record<string, Theme> = {
 			searchMatchBackground: "#fabd2f33",
 			searchMatchText: "#fabd2f",
 			searchSlash: "#fe8019",
+			surface0: "#282828",
+			surface1: "#3c3836",
+			surface2: "#504945",
+			toastBorderSuccess: "#b8bb26",
+			toastBorderError: "#fb4934",
+			toastBorderInfo: "#fe8019",
 		},
 	},
 	catppuccin: {
@@ -178,6 +222,12 @@ export const themes: Record<string, Theme> = {
 			searchMatchBackground: "#f9e2af33",
 			searchMatchText: "#f9e2af",
 			searchSlash: "#cba6f7",
+			surface0: "#1e1e2e",
+			surface1: "#313244",
+			surface2: "#45475a",
+			toastBorderSuccess: "#a6e3a1",
+			toastBorderError: "#f38ba8",
+			toastBorderInfo: "#89b4fa",
 		},
 	},
 };
@@ -334,6 +384,11 @@ export function buildTerminalTheme(colors: TerminalColors): Theme {
 	// Create a slightly lighter background for selection
 	const selectedLineBackground = lightenColor(background, 0.15);
 
+	// Derive surface colors (progressively lighter in dark mode)
+	const surface0 = background;
+	const surface1 = lightenColor(background, 0.08);
+	const surface2 = lightenColor(background, 0.15);
+
 	return {
 		name: "Terminal",
 		colors: {
@@ -353,6 +408,12 @@ export function buildTerminalTheme(colors: TerminalColors): Theme {
 			searchMatchBackground: `${paletteYellow}33`,
 			searchMatchText: paletteYellow,
 			searchSlash: paletteBlue,
+			surface0,
+			surface1,
+			surface2,
+			toastBorderSuccess: paletteGreen,
+			toastBorderError: paletteRed,
+			toastBorderInfo: paletteBlue,
 		},
 	};
 }

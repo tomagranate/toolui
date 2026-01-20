@@ -27,38 +27,28 @@ function ToastItem({ toast: t, theme, onDismiss }: ToastItemProps) {
 		return () => clearTimeout(timeout);
 	}, [t.id, t.duration, onDismiss]);
 
-	// Get colors based on toast type
-	const getColors = () => {
+	// Get border color based on toast type
+	const getBorderColor = () => {
 		switch (t.type) {
 			case "success":
-				return {
-					bg: colors.statusRunning,
-					fg: colors.background,
-				};
+				return colors.toastBorderSuccess;
 			case "error":
-				return {
-					bg: colors.statusError,
-					fg: "white",
-				};
+				return colors.toastBorderError;
 			default:
-				return {
-					bg: colors.activeTabBackground,
-					fg: colors.activeTabText,
-				};
+				return colors.toastBorderInfo;
 		}
 	};
 
-	const { bg, fg } = getColors();
+	const borderColor = getBorderColor();
 
 	return (
-		<box
-			height={1}
-			paddingLeft={1}
-			paddingRight={1}
-			backgroundColor={bg}
-			justifyContent="flex-end"
-		>
-			<text fg={fg}>{t.message}</text>
+		<box flexDirection="row" backgroundColor={colors.surface2}>
+			{/* Left accent stripe using partial block character */}
+			<text fg={borderColor}>{"▎\n▎\n▎"}</text>
+			{/* Toast content with padding */}
+			<box padding={1}>
+				<text fg={colors.text}>{t.message}</text>
+			</box>
 		</box>
 	);
 }
@@ -85,8 +75,8 @@ export function ToastContainer({ theme }: ToastContainerProps) {
 	return (
 		<box
 			position="absolute"
-			top={0}
-			right={0}
+			top={1}
+			right={2}
 			flexDirection="column"
 			gap={1}
 			zIndex={1000}

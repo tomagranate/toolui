@@ -134,20 +134,19 @@ export function HelpBar({
 }: HelpBarProps) {
 	const { colors } = theme;
 
-	// Account for border and padding (2 chars each side = 4 total)
-	const availableWidth = width - 4;
+	// Account for padding (1 char each side = 2 total)
+	const availableWidth = width - 2;
 
 	const hints = getHintsForMode(mode, isVerticalLayout);
 	const displayText = formatHints(hints, availableWidth);
 
 	return (
 		<box
-			height={3}
-			border
-			borderStyle="rounded"
-			paddingLeft={1}
-			paddingRight={1}
-			backgroundColor={colors.background}
+			height={1}
+			width="100%"
+			backgroundColor={colors.surface1}
+			justifyContent="center"
+			alignItems="center"
 		>
 			<text fg={colors.text}>{displayText}</text>
 		</box>

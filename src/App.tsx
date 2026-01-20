@@ -108,6 +108,11 @@ export function App({
 		setLineWrap((prev) => !prev);
 	}, []);
 
+	// Toggle debug console (OpenTUI built-in console)
+	const toggleConsole = useCallback(() => {
+		renderer.console.toggle();
+	}, [renderer]);
+
 	// Register commands for the command palette
 	useEffect(() => {
 		const commands = [
@@ -130,6 +135,12 @@ export function App({
 				action: toggleLineWrap,
 			},
 			{
+				id: "toggle-console",
+				label: "Toggle debug console",
+				category: "View",
+				action: toggleConsole,
+			},
+			{
 				id: "quit",
 				label: "Quit",
 				shortcut: "q",
@@ -150,14 +161,14 @@ export function App({
 			},
 		];
 
-		// Add tab switching commands
-		for (let i = 0; i < Math.min(9, tools.length); i++) {
+		// Add tab switching commands for all tabs (shortcuts only for first 9)
+		for (let i = 0; i < tools.length; i++) {
 			const tool = tools[i];
 			if (tool) {
 				commands.push({
 					id: `switch-tab-${i}`,
 					label: `Switch to ${tool.config.name}`,
-					shortcut: `${i + 1}`,
+					shortcut: i < 9 ? `${i + 1}` : undefined,
 					category: "Tabs",
 					action: () => {
 						setNavigationKey((k) => k + 1);
@@ -180,6 +191,7 @@ export function App({
 		updateTabSearchState,
 		lineWrap,
 		toggleLineWrap,
+		toggleConsole,
 	]);
 
 	// Handle keyboard input
@@ -194,7 +206,26 @@ export function App({
 				process.exit(1);
 				return;
 			}
-			// Not shutting down - start graceful shutdown
+
+			// Priority 1: Close console if open
+			if (renderer.console.visible) {
+				renderer.console.hide();
+				return;
+			}
+
+			// Priority 2: Close command palette if open
+			if (commandPaletteOpen) {
+				setCommandPaletteOpen(false);
+				return;
+			}
+
+			// Priority 3: Close shortcuts modal if open
+			if (shortcutsOpen) {
+				setShortcutsOpen(false);
+				return;
+			}
+
+			// Priority 4: Exit the program
 			await processManager.cleanup();
 			renderer.stop();
 			renderer.destroy();
@@ -335,16 +366,15 @@ export function App({
 	const showLineNumbers = config.ui?.showLineNumbers ?? "auto";
 
 	// Calculate sidebar width when in vertical mode (for LogViewer truncation calculation)
-	// Vertical TabBar has width={20} + border (2 chars) = 22 chars
-	const sidebarWidth = useVertical ? 22 : 0;
+	// Vertical TabBar has width={20} + gap (1 char) = 21 chars
+	const sidebarWidth = useVertical ? 21 : 0;
 
 	const logViewerComponent = (
 		<box
 			flexGrow={1}
 			flexDirection="column"
 			height="100%"
-			border
-			borderStyle="rounded"
+			backgroundColor={theme.colors.surface0}
 		>
 			{activeTool ? (
 				<LogViewer
@@ -365,6 +395,11 @@ export function App({
 					}
 					onFilterModeChange={(filter) =>
 						updateTabSearchState(activeTool.config.name, { filterMode: filter })
+					}
+					onCurrentMatchIndexChange={(index) =>
+						updateTabSearchState(activeTool.config.name, {
+							currentMatchIndex: index,
+						})
 					}
 					showLineNumbers={showLineNumbers}
 					lineWrap={lineWrap}
@@ -408,7 +443,7 @@ export function App({
 			)}
 			{useVertical ? (
 				// Vertical layout: sidebar on left or right
-				<box flexDirection="row" flexGrow={1} width="100%">
+				<box flexDirection="row" flexGrow={1} width="100%" gap={1}>
 					{sidebarPosition === "left" && tabBarComponent}
 					{logViewerComponent}
 					{sidebarPosition === "right" && tabBarComponent}

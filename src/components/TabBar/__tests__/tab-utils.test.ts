@@ -41,7 +41,7 @@ describe("truncateName", () => {
 		const result = truncateName(longName);
 		expect(result.length).toBe(MAX_TAB_NAME_LENGTH);
 		expect(result.endsWith("…")).toBe(true);
-		expect(result).toBe("a".repeat(MAX_TAB_NAME_LENGTH - 1) + "…");
+		expect(result).toBe(`${"a".repeat(MAX_TAB_NAME_LENGTH - 1)}…`);
 	});
 
 	test("respects custom maxLength parameter", () => {
