@@ -1,8 +1,16 @@
 import { TextAttributes } from "@opentui/core";
 import { useEffect, useRef, useState } from "react";
-import { STATUS_ICON_WIDTH, StatusIcons } from "../constants";
-import type { ToolState } from "../types";
-import type { Theme } from "../utils/themes";
+import { StatusIcons } from "../../constants";
+import type { Theme } from "../../lib/theme";
+import type { ToolState } from "../../types";
+import {
+	calculateMinOffsetForTab,
+	calculateTabExtraPadding,
+	calculateVisibleTabs,
+	canFitAllTabs,
+	INDICATOR_WIDTH,
+	truncateName,
+} from "./tab-utils";
 
 interface TabBarProps {
 	tools: ToolState[];
@@ -13,176 +21,6 @@ interface TabBarProps {
 	width?: number; // Terminal width for horizontal tab calculations
 	showTabNumbers?: boolean; // Show 1-9 shortcuts on first 9 tabs
 	navigationKey?: number; // Increment this when keyboard/shortcut navigation happens to trigger auto-scroll
-}
-
-// Constants for tab width calculations
-const INDICATOR_WIDTH = 3; // "◀ " or " ▶"
-const TAB_PADDING = 4; // paddingLeft=2 + paddingRight=2
-const TAB_NUMBER_WIDTH = 2; // "N:" prefix for tabs 1-9
-const MAX_TAB_NAME_LENGTH = 15; // Truncate longer names
-const BORDER_WIDTH = 2; // Left and right border
-
-/**
- * Truncate a tab name if it exceeds the maximum length
- */
-function truncateName(
-	name: string,
-	maxLength: number = MAX_TAB_NAME_LENGTH,
-): string {
-	if (name.length <= maxLength) {
-		return name;
-	}
-	return `${name.slice(0, maxLength - 1)}…`;
-}
-
-/**
- * Calculate the display width of a single tab
- */
-function getTabWidth(
-	name: string,
-	index: number,
-	showTabNumbers: boolean,
-): number {
-	const truncatedName = truncateName(name);
-	const numberWidth = showTabNumbers && index < 9 ? TAB_NUMBER_WIDTH : 0;
-	return numberWidth + STATUS_ICON_WIDTH + truncatedName.length + TAB_PADDING;
-}
-
-/**
- * Check if all tabs can fit without scrolling
- */
-function canFitAllTabs(
-	tools: ToolState[],
-	availableWidth: number,
-	showTabNumbers: boolean,
-): boolean {
-	const usableWidth = availableWidth - BORDER_WIDTH;
-	let totalWidth = 0;
-
-	for (let i = 0; i < tools.length; i++) {
-		const tool = tools[i];
-		if (!tool) continue;
-		totalWidth += getTabWidth(tool.config.name, i, showTabNumbers);
-		if (totalWidth > usableWidth) return false;
-	}
-
-	return true;
-}
-
-/**
- * Calculate which tabs are visible given the available width and scroll offset
- */
-function calculateVisibleTabs(
-	tools: ToolState[],
-	availableWidth: number,
-	scrollOffset: number,
-	needsScrolling: boolean,
-	showTabNumbers: boolean,
-): {
-	visibleIndices: number[];
-	lastVisibleIndex: number;
-} {
-	// Account for indicators - reserve space for both when in scrolling mode
-	let usableWidth = availableWidth - BORDER_WIDTH;
-	if (needsScrolling) {
-		// Always reserve space for both arrows when scrolling is needed
-		usableWidth -= INDICATOR_WIDTH * 2;
-	}
-
-	const visibleIndices: number[] = [];
-	let currentWidth = 0;
-	let lastVisibleIndex = scrollOffset;
-
-	for (let i = scrollOffset; i < tools.length; i++) {
-		const tool = tools[i] as ToolState | undefined;
-		if (!tool) continue;
-		const tabWidth = getTabWidth(tool.config.name, i, showTabNumbers);
-
-		if (currentWidth + tabWidth <= usableWidth) {
-			visibleIndices.push(i);
-			currentWidth += tabWidth;
-			lastVisibleIndex = i;
-		} else {
-			break;
-		}
-	}
-
-	return { visibleIndices, lastVisibleIndex };
-}
-
-/**
- * Calculate the extra padding for each tab to fill available space
- * Aims for equal-width tabs: shorter tabs get more padding to compensate
- * Returns an array of extra padding values (to be split between left and right)
- */
-function calculateTabExtraPadding(
-	tools: ToolState[],
-	visibleIndices: number[],
-	availableWidth: number,
-	needsScrolling: boolean,
-	showTabNumbers: boolean,
-): number[] {
-	if (visibleIndices.length === 0) return [];
-
-	// Calculate usable width for tabs - reserve space for both arrows when scrolling
-	let usableWidth = availableWidth - BORDER_WIDTH;
-	if (needsScrolling) {
-		usableWidth -= INDICATOR_WIDTH * 2;
-	}
-
-	const tabCount = visibleIndices.length;
-
-	// Get base width for each tab
-	const baseWidths = visibleIndices.map((index) => {
-		const tool = tools[index];
-		return tool ? getTabWidth(tool.config.name, index, showTabNumbers) : 0;
-	});
-
-	// Iteratively assign widths to achieve equal-width tabs where possible
-	// Tabs that need more than the equal share get their full width
-	// Remaining space is redistributed to other tabs
-	let remainingWidth = usableWidth;
-	let remainingTabs = tabCount;
-	const finalWidths = new Array<number>(tabCount).fill(0);
-	const assigned = new Array<boolean>(tabCount).fill(false);
-
-	while (remainingTabs > 0) {
-		const targetWidth = Math.floor(remainingWidth / remainingTabs);
-		let madeProgress = false;
-
-		for (let i = 0; i < tabCount; i++) {
-			if (assigned[i]) continue;
-
-			const baseWidth = baseWidths[i] ?? 0;
-			if (baseWidth >= targetWidth) {
-				// This tab needs its full base width (longer name)
-				finalWidths[i] = baseWidth;
-				remainingWidth -= baseWidth;
-				remainingTabs--;
-				assigned[i] = true;
-				madeProgress = true;
-			}
-		}
-
-		if (!madeProgress) {
-			// All remaining tabs fit within target width
-			// Assign equal widths, distributing remainder
-			let remainder = remainingWidth % remainingTabs;
-			for (let i = 0; i < tabCount; i++) {
-				if (!assigned[i]) {
-					finalWidths[i] = targetWidth + (remainder > 0 ? 1 : 0);
-					if (remainder > 0) remainder--;
-					assigned[i] = true;
-				}
-			}
-			break;
-		}
-	}
-
-	// Calculate extra padding (final width - base width)
-	return finalWidths.map((finalWidth, i) =>
-		Math.max(0, finalWidth - (baseWidths[i] ?? 0)),
-	);
 }
 
 export function TabBar({
@@ -204,15 +42,6 @@ export function TabBar({
 	const pendingNavigationRef = useRef(true);
 	const lastActiveIndexRef = useRef(activeIndex);
 	const lastNavigationKeyRef = useRef(navigationKey);
-
-	// When navigationKey changes, it signals that keyboard/shortcut navigation happened
-	// This should trigger auto-scroll for the next activeIndex change
-	useEffect(() => {
-		if (navigationKey !== lastNavigationKeyRef.current) {
-			pendingNavigationRef.current = true;
-			lastNavigationKeyRef.current = navigationKey;
-		}
-	}, [navigationKey]);
 
 	// Check if we need scrolling (not all tabs fit)
 	const needsScrolling = !canFitAllTabs(tools, width, showTabNumbers);
@@ -242,65 +71,60 @@ export function TabBar({
 	);
 
 	// Auto-scroll to keep active tab visible (only when navigation triggered it)
+	// Navigation is signaled by navigationKey changing
+	// biome-ignore lint/correctness/useExhaustiveDependencies: scrollOffset and lastVisibleIndex are read from current render but not in deps - we only trigger on navigation events
 	useEffect(() => {
 		if (vertical || activeIndex < 0 || activeIndex >= tools.length) {
 			return;
 		}
+
+		// Check if this is a navigation event (navigationKey changed)
+		const isNavigation = navigationKey !== lastNavigationKeyRef.current;
+		lastNavigationKeyRef.current = navigationKey;
 
 		// Check if activeIndex actually changed
 		const activeIndexChanged = activeIndex !== lastActiveIndexRef.current;
 		lastActiveIndexRef.current = activeIndex;
 
 		// Only auto-scroll if navigation triggered this change (not manual scrolling)
-		if (!activeIndexChanged || !pendingNavigationRef.current) {
+		// We check isNavigation OR if we had a pending navigation from a previous render
+		const shouldAutoScroll =
+			activeIndexChanged && (isNavigation || pendingNavigationRef.current);
+
+		if (isNavigation && !activeIndexChanged) {
+			// Navigation key changed but active index hasn't yet - mark as pending
+			pendingNavigationRef.current = true;
 			return;
 		}
 
-		// Reset the flag after processing
+		if (!shouldAutoScroll) {
+			return;
+		}
+
+		// Reset the pending flag
 		pendingNavigationRef.current = false;
 
-		// If active tab is before the visible range, scroll left
-		if (activeIndex < scrollOffset) {
-			setScrollOffset(activeIndex);
-		}
-		// If active tab is after the visible range, scroll right
-		else if (activeIndex > lastVisibleIndex) {
-			// Find the minimum scroll offset that makes activeIndex visible
-			// Start from activeIndex and work backwards to find how many tabs fit
-			let newOffset = activeIndex;
-			let totalWidth = BORDER_WIDTH;
-			if (newOffset > 0) {
-				totalWidth += INDICATOR_WIDTH; // Left indicator will be shown
+		// Check if active tab is in the visible range [scrollOffset, lastVisibleIndex]
+		const isActiveVisible =
+			activeIndex >= scrollOffset && activeIndex <= lastVisibleIndex;
+
+		if (!isActiveVisible) {
+			// If active tab is before the visible range, scroll left to show it
+			if (activeIndex < scrollOffset) {
+				setScrollOffset(activeIndex);
 			}
-
-			for (let i = activeIndex; i >= 0; i--) {
-				const tool = tools[i];
-				if (!tool) continue;
-				const tabWidth = getTabWidth(tool.config.name, i, showTabNumbers);
-				const hasMoreAfter = activeIndex < tools.length - 1;
-				const neededWidth = hasMoreAfter
-					? totalWidth + tabWidth + INDICATOR_WIDTH
-					: totalWidth + tabWidth;
-
-				if (neededWidth <= width) {
-					totalWidth += tabWidth;
-					newOffset = i;
-				} else {
-					break;
-				}
+			// If active tab is after the visible range, scroll right
+			else {
+				const newOffset = calculateMinOffsetForTab(
+					tools,
+					activeIndex,
+					width,
+					showTabNumbers,
+				);
+				setScrollOffset(newOffset);
 			}
-
-			setScrollOffset(newOffset);
 		}
-	}, [
-		activeIndex,
-		scrollOffset,
-		lastVisibleIndex,
-		tools,
-		vertical,
-		width,
-		showTabNumbers,
-	]);
+	}, [activeIndex, navigationKey, tools, vertical, width, showTabNumbers]);
 
 	// Scroll handlers - mark as manual scroll
 	// Single step scroll (for wheel)
@@ -311,7 +135,14 @@ export function TabBar({
 
 	const scrollRightOne = () => {
 		pendingNavigationRef.current = false;
-		setScrollOffset((prev) => Math.min(tools.length - 1, prev + 1));
+		// Calculate max offset that still shows a full page (last tab at rightmost)
+		const maxOffset = calculateMinOffsetForTab(
+			tools,
+			tools.length - 1,
+			width,
+			showTabNumbers,
+		);
+		setScrollOffset((prev) => Math.min(maxOffset, prev + 1));
 	};
 
 	// Page scroll (for arrow buttons) - scroll by the number of visible tabs
@@ -324,7 +155,14 @@ export function TabBar({
 	const pageRight = () => {
 		pendingNavigationRef.current = false;
 		const pageSize = Math.max(1, visibleIndices.length);
-		setScrollOffset((prev) => Math.min(tools.length - 1, prev + pageSize));
+		// Calculate max offset that still shows a full page (last tab at rightmost)
+		const maxOffset = calculateMinOffsetForTab(
+			tools,
+			tools.length - 1,
+			width,
+			showTabNumbers,
+		);
+		setScrollOffset((prev) => Math.min(maxOffset, prev + pageSize));
 	};
 
 	// Handle scroll events for scrolling (manual scroll) - single step

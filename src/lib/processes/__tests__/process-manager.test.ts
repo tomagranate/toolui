@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import type { ToolConfig } from "../../../types";
+import { deletePidFile } from "../pid-file";
 import { ProcessManager } from "../process-manager";
-import type { ToolConfig } from "../types";
-import { deletePidFile } from "../utils/pid-file";
 
 /**
  * Helper to wait for a process to exit by polling status.

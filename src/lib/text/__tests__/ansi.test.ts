@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { TextSegment } from "../../types";
+import type { TextSegment } from "../../../types";
 import { getVisibleWidth, parseAnsiLine, wrapSegments } from "../ansi";
 
 describe("ANSI parsing", () => {

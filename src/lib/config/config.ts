@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { parse as parseToml } from "@iarna/toml";
-import type { Config } from "../types";
+import type { Config } from "./types";
 
 export async function loadConfig(
 	path: string = "toolui.config.toml",

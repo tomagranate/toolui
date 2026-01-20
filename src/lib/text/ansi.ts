@@ -1,6 +1,6 @@
 import { TextAttributes } from "@opentui/core";
-import type { TextSegment } from "../types";
-import { mapAnsiColor } from "./themes";
+import type { TextSegment } from "../../types";
+import { mapAnsiColor } from "../theme";
 
 const ESC = String.fromCharCode(27);
 // Match ANSI escape sequences: ESC[ followed by parameters and ending with a letter

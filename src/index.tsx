@@ -1,9 +1,9 @@
 import { createCliRenderer } from "@opentui/core";
 import { createRoot } from "@opentui/react";
 import { App } from "./App";
-import { ProcessManager } from "./process-manager";
-import { loadConfig } from "./utils/config";
-import { getTerminalTheme, getTheme, type Theme } from "./utils/themes";
+import { loadConfig } from "./lib/config";
+import { ProcessManager } from "./lib/processes";
+import { getTerminalTheme, getTheme, type Theme } from "./lib/theme";
 
 async function main() {
 	try {

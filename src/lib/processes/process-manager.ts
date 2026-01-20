@@ -1,13 +1,13 @@
-import type { ToolConfig, ToolState } from "./types";
-import { parseAnsiLine } from "./utils/ansi";
+import type { ToolConfig, ToolState } from "../../types";
+import { parseAnsiLine } from "../text";
 import {
 	deletePidFile,
 	loadPidFile,
 	type PidFileEntry,
 	removePidFromFile,
 	updatePidFile,
-} from "./utils/pid-file";
-import { isProcessRunning, killProcessGracefully } from "./utils/process-utils";
+} from "./pid-file";
+import { isProcessRunning, killProcessGracefully } from "./process-utils";
 
 export class ProcessManager {
 	private tools: ToolState[] = [];

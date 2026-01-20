@@ -4,9 +4,10 @@ import { useEffect, useState } from "react";
 import { LogViewer } from "./components/LogViewer";
 import { TabBar } from "./components/TabBar";
 import { StatusIcons } from "./constants";
-import type { ProcessManager } from "./process-manager";
-import type { Config, ToolState } from "./types";
-import type { Theme } from "./utils/themes";
+import type { Config } from "./lib/config";
+import type { ProcessManager } from "./lib/processes";
+import type { Theme } from "./lib/theme";
+import type { ToolState } from "./types";
 
 interface AppProps {
 	processManager: ProcessManager;

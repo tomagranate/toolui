@@ -1,7 +1,7 @@
 import type { ScrollBoxRenderable } from "@opentui/core";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { Theme } from "../lib/theme";
 import type { ToolState } from "../types";
-import type { Theme } from "../utils/themes";
 
 interface LogViewerProps {
 	tool: ToolState;
