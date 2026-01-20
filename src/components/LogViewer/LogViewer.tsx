@@ -1,6 +1,6 @@
 import {
-	type MouseEvent,
 	type ScrollBoxRenderable,
+	type Selection,
 	TextAttributes,
 } from "@opentui/core";
 import {
@@ -20,12 +20,8 @@ import {
 	calculateScrollInfo,
 	findMatchingLines,
 	getLineNumberWidth,
-	getLineSelection as getLineSelectionUtil,
-	getSelectedText as getSelectedTextUtil,
 	LINE_NUMBER_WIDTH_THRESHOLD,
-	type SelectionPosition,
 	truncateLine,
-	visualPositionToColumn,
 } from "./log-viewer-utils";
 
 interface LogViewerProps {
@@ -108,19 +104,6 @@ export function LogViewer({
 	const lastClickRef = useRef<{ lineIndex: number; time: number } | null>(null);
 	const isDoubleClickRef = useRef(false);
 	const DOUBLE_CLICK_THRESHOLD = 400; // ms
-
-	// Character-level selection state
-	const [selectionStart, setSelectionStart] =
-		useState<SelectionPosition | null>(null);
-	const [selectionEnd, setSelectionEnd] = useState<SelectionPosition | null>(
-		null,
-	);
-	const isDraggingRef = useRef(false);
-	// Store start position in ref for reliable comparison (avoids async state issues)
-	const selectionStartRef = useRef<SelectionPosition | null>(null);
-	// Store the reference target position from mouseDown for consistent column calculation during drag
-	// This prevents issues where event.target changes as mouse moves over different elements
-	const dragTargetRefPos = useRef<{ x: number; y: number } | null>(null);
 
 	// Determine if line numbers should be shown
 	const shouldShowLineNumbers =
@@ -270,201 +253,64 @@ export function LogViewer({
 		[renderer],
 	);
 
-	// Convert mouse position to character column within line content
-	// Handles word-wrapped lines by calculating actual wrap break points
-	const positionToCol = useCallback(
-		(
-			globalX: number,
-			globalY: number,
-			targetX: number,
-			targetY: number,
-			lineText: string,
-			wrapWidth: number,
-		): number => {
-			// Calculate local position within the text element
-			const localX = globalX - targetX;
-			const localY = globalY - targetY;
-
-			// Calculate which visual row we're on (0-indexed)
-			// Each visual row is 1 unit tall in terminal coordinates
-			const visualRow = Math.max(0, Math.floor(localY));
-
-			// Use word-wrap-aware calculation to get the actual column
-			return visualPositionToColumn(visualRow, localX, lineText, wrapWidth);
+	// Handle double-click to copy entire line
+	const handleDoubleClick = useCallback(
+		(lineIndex: number) => {
+			const fullLine = logLines[lineIndex];
+			if (fullLine !== undefined) {
+				copyText(fullLine);
+				setFlashingLine(lineIndex);
+				setTimeout(() => setFlashingLine(null), 150);
+				toast.success("Copied line to clipboard");
+			}
 		},
-		[],
+		[logLines, copyText],
 	);
 
-	// Get selected text from character-level selection
-	const getSelectedText = useCallback((): string => {
-		return getSelectedTextUtil(selectionStart, selectionEnd, logLines);
-	}, [selectionStart, selectionEnd, logLines]);
-
-	// Get selection range for a specific line (returns null if line not in selection)
-	const getLineSelection = useCallback(
-		(
-			lineIndex: number,
-			lineLength: number,
-		): { startCol: number; endCol: number } | null => {
-			return getLineSelectionUtil(
-				lineIndex,
-				lineLength,
-				selectionStart,
-				selectionEnd,
-			);
-		},
-		[selectionStart, selectionEnd],
-	);
-
-	// Handle mouse down - start potential selection
+	// Handle mouse down for double-click detection
 	const handleMouseDown = useCallback(
-		(lineIndex: number, event: MouseEvent) => {
-			event.preventDefault(); // Prevent native selection
-			isDraggingRef.current = true;
-			const line = logLines[lineIndex] ?? "";
-			const targetX = event.target?.x ?? 0;
-			const targetY = event.target?.y ?? 0;
-			// Store the reference position for consistent calculations during drag
-			// This prevents issues when event.target changes as mouse moves over different elements
-			dragTargetRefPos.current = { x: targetX, y: targetY };
-			const col = positionToCol(
-				event.x,
-				event.y,
-				targetX,
-				targetY,
-				line,
-				contentWidth,
-			);
-			const pos = { line: lineIndex, col };
-			setSelectionStart(pos);
-			setSelectionEnd(pos);
-			// Store in ref for reliable comparison in mouseUp
-			selectionStartRef.current = pos;
-
-			// Check for double-click based on PREVIOUS click
+		(lineIndex: number) => {
 			const now = Date.now();
 			const lastClick = lastClickRef.current;
-			isDoubleClickRef.current =
+			const isDoubleClick =
 				lastClick !== null &&
 				lastClick.lineIndex === lineIndex &&
 				now - lastClick.time < DOUBLE_CLICK_THRESHOLD;
-		},
-		[logLines, positionToCol, contentWidth],
-	);
 
-	// Handle mouse drag - update selection end
-	const handleMouseDrag = useCallback(
-		(lineIndex: number, event: MouseEvent) => {
-			if (!isDraggingRef.current) return;
-			const line = logLines[lineIndex] ?? "";
-			// Use the stored reference position from mouseDown for consistent column calculation
-			// This prevents offset jumps when dragging across different elements
-			const refPos = dragTargetRefPos.current;
-			const targetX = refPos?.x ?? event.target?.x ?? 0;
-			const targetY = refPos?.y ?? event.target?.y ?? 0;
-			const col = positionToCol(
-				event.x,
-				event.y,
-				targetX,
-				targetY,
-				line,
-				contentWidth,
-			);
-			setSelectionEnd({ line: lineIndex, col });
-		},
-		[logLines, positionToCol, contentWidth],
-	);
-
-	// Handle mouse up - finish selection and copy
-	const handleMouseUp = useCallback(
-		(lineIndex: number, event: MouseEvent) => {
-			if (!isDraggingRef.current) return;
-			isDraggingRef.current = false;
-
-			const line = logLines[lineIndex] ?? "";
-			// Use the stored reference position from mouseDown for consistent column calculation
-			const refPos = dragTargetRefPos.current;
-			const targetX = refPos?.x ?? event.target?.x ?? 0;
-			const targetY = refPos?.y ?? event.target?.y ?? 0;
-			const col = positionToCol(
-				event.x,
-				event.y,
-				targetX,
-				targetY,
-				line,
-				contentWidth,
-			);
-			const endPos = { line: lineIndex, col };
-			setSelectionEnd(endPos);
-			// Clear the reference position
-			dragTargetRefPos.current = null;
-
-			// Use ref for start position (more reliable than async state)
-			const startPos = selectionStartRef.current;
-
-			// Check if this was detected as a double-click in mouseDown
-			if (isDoubleClickRef.current) {
-				// Double-click: copy entire line
-				const fullLine = logLines[lineIndex];
-				if (fullLine !== undefined) {
-					copyText(fullLine);
-					setFlashingLine(lineIndex);
-					setTimeout(() => setFlashingLine(null), 150);
-					toast.success("Copied line to clipboard");
-				}
-				// Reset double-click detection
-				isDoubleClickRef.current = false;
+			if (isDoubleClick) {
+				handleDoubleClick(lineIndex);
 				lastClickRef.current = null;
-				selectionStartRef.current = null;
-				setSelectionStart(null);
-				setSelectionEnd(null);
+				isDoubleClickRef.current = false;
 			} else {
-				// Check if there's actually a drag selection (not just a single click)
-				// Must have different line OR moved at least 2 columns to avoid accidental selections
-				const MIN_SELECTION_CHARS = 2;
-				const hasRealSelection =
-					startPos &&
-					(startPos.line !== endPos.line ||
-						Math.abs(startPos.col - endPos.col) >= MIN_SELECTION_CHARS);
-
-				if (hasRealSelection) {
-					// Drag selection: copy selected text
-					const selectedText = getSelectedText();
-					if (selectedText && selectedText.length > 0) {
-						copyText(selectedText);
-						const charCount = selectedText.length;
-						const lineCount = selectedText.split("\n").length;
-						if (lineCount > 1) {
-							toast.success(`Copied ${lineCount} lines to clipboard`);
-						} else {
-							toast.success(
-								`Copied ${charCount} character${charCount > 1 ? "s" : ""} to clipboard`,
-							);
-						}
-						// Clear selection after brief delay
-						setTimeout(() => {
-							setSelectionStart(null);
-							setSelectionEnd(null);
-							selectionStartRef.current = null;
-						}, 150);
-					} else {
-						setSelectionStart(null);
-						setSelectionEnd(null);
-						selectionStartRef.current = null;
-					}
-					// Reset click tracking since this was a drag
-					lastClickRef.current = null;
-				} else {
-					// Single click without drag - record for potential double-click
-					lastClickRef.current = { lineIndex, time: Date.now() };
-					setSelectionStart(null);
-					setSelectionEnd(null);
-					selectionStartRef.current = null;
-				}
+				lastClickRef.current = { lineIndex, time: now };
+				isDoubleClickRef.current = false;
 			}
 		},
-		[logLines, positionToCol, contentWidth, copyText, getSelectedText],
+		[handleDoubleClick],
 	);
+
+	// Listen for OpenTUI selection events to copy to clipboard
+	useEffect(() => {
+		const handleSelection = (selection: Selection | null) => {
+			// When selection completes (isSelecting becomes false) and there's selected text
+			if (selection && !selection.isSelecting) {
+				const text = selection.getSelectedText();
+				if (text) {
+					copyText(text);
+					const lineCount = text.split("\n").length;
+					if (lineCount > 1) {
+						toast.success(`Copied ${lineCount} lines to clipboard`);
+					} else {
+						toast.success("Copied to clipboard");
+					}
+				}
+			}
+		};
+		renderer.on("selection", handleSelection);
+		return () => {
+			renderer.off("selection", handleSelection);
+		};
+	}, [renderer, copyText]);
 
 	return (
 		<box flexGrow={1} height="100%" flexDirection="column">
@@ -587,17 +433,13 @@ export function LogViewer({
 								lineNumberWidth,
 								" ",
 							);
-							const lineSelection = getLineSelection(
-								originalIndex,
-								line.length,
-							);
 
 							// Get display line (truncated if lineWrap is off)
 							const displayLine = truncateLine(line, contentWidth, lineWrap);
 
-							// Render line content with character-level selection highlighting
+							// Render line content with search match highlighting
 							const renderLineContent = () => {
-								// If flashing, highlight entire line (use display line for visual)
+								// If flashing (double-click copy feedback), highlight entire line
 								if (isFlashing) {
 									return (
 										<span bg={colors.selectedLineBackground} fg={colors.text}>
@@ -606,39 +448,7 @@ export function LogViewer({
 									);
 								}
 
-								// If line has selection (apply to display line for visual)
-								if (lineSelection) {
-									const { startCol, endCol } = lineSelection;
-									// Clamp selection to display line length
-									const displayStartCol = Math.min(
-										startCol,
-										displayLine.length,
-									);
-									const displayEndCol = Math.min(endCol, displayLine.length);
-									const before = displayLine.substring(0, displayStartCol);
-									const selected = displayLine.substring(
-										displayStartCol,
-										displayEndCol,
-									);
-									const after = displayLine.substring(displayEndCol);
-
-									return (
-										<>
-											{before && <span fg={colors.text}>{before}</span>}
-											{selected && (
-												<span
-													bg={colors.selectedLineBackground}
-													fg={colors.text}
-												>
-													{selected}
-												</span>
-											)}
-											{after && <span fg={colors.text}>{after}</span>}
-										</>
-									);
-								}
-
-								// Search match highlighting (use display line)
+								// Search match highlighting
 								if (searchQuery && isMatch) {
 									return highlightMatches(
 										displayLine,
@@ -660,13 +470,7 @@ export function LogViewer({
 									key={`log-${tool.config.name}-${originalIndex}`}
 									flexDirection="row"
 									backgroundColor={colors.background}
-									onMouseDown={(e: MouseEvent) =>
-										handleMouseDown(originalIndex, e)
-									}
-									onMouseDrag={(e: MouseEvent) =>
-										handleMouseDrag(originalIndex, e)
-									}
-									onMouseUp={(e: MouseEvent) => handleMouseUp(originalIndex, e)}
+									onMouseDown={() => handleMouseDown(originalIndex)}
 								>
 									{/* Line number gutter - fixed width column with right border */}
 									{shouldShowLineNumbers && (
@@ -680,9 +484,16 @@ export function LogViewer({
 											<text fg={colors.lineNumberText}>{lineNumber}</text>
 										</box>
 									)}
-									{/* Log content - flexible column */}
+									{/* Log content - flexible column with OpenTUI selection */}
 									<box flexGrow={1} paddingLeft={shouldShowLineNumbers ? 1 : 0}>
-										<text fg={colors.text}>{renderLineContent()}</text>
+										<text
+											fg={colors.text}
+											selectable
+											selectionBg={colors.selectedLineBackground}
+											selectionFg={colors.text}
+										>
+											{renderLineContent()}
+										</text>
 									</box>
 								</box>
 							);
