@@ -21,6 +21,12 @@ export interface Theme {
 		statusStopped: string;
 		warningBackground: string;
 		warningText: string;
+		// Log viewer colors
+		lineNumberText: string;
+		selectedLineBackground: string;
+		searchMatchBackground: string;
+		searchMatchText: string;
+		searchSlash: string;
 	};
 }
 
@@ -38,6 +44,11 @@ const DEFAULT_THEME: Theme = {
 		statusStopped: "white",
 		warningBackground: "yellow",
 		warningText: "black",
+		lineNumberText: "#666666",
+		selectedLineBackground: "#333333",
+		searchMatchBackground: "#444400",
+		searchMatchText: "#ffff00",
+		searchSlash: "#ffff00",
 	},
 };
 
@@ -57,6 +68,11 @@ export const themes: Record<string, Theme> = {
 			statusStopped: "#6272a4",
 			warningBackground: "#f1fa8c",
 			warningText: "#282a36",
+			lineNumberText: "#6272a4",
+			selectedLineBackground: "#44475a",
+			searchMatchBackground: "#50fa7b33",
+			searchMatchText: "#50fa7b",
+			searchSlash: "#bd93f9",
 		},
 	},
 	nord: {
@@ -73,6 +89,11 @@ export const themes: Record<string, Theme> = {
 			statusStopped: "#4c566a",
 			warningBackground: "#ebcb8b",
 			warningText: "#2e3440",
+			lineNumberText: "#4c566a",
+			selectedLineBackground: "#3b4252",
+			searchMatchBackground: "#ebcb8b33",
+			searchMatchText: "#ebcb8b",
+			searchSlash: "#5e81ac",
 		},
 	},
 	onedark: {
@@ -89,6 +110,11 @@ export const themes: Record<string, Theme> = {
 			statusStopped: "#5c6370",
 			warningBackground: "#e5c07b",
 			warningText: "#282c34",
+			lineNumberText: "#5c6370",
+			selectedLineBackground: "#3e4451",
+			searchMatchBackground: "#e5c07b33",
+			searchMatchText: "#e5c07b",
+			searchSlash: "#61afef",
 		},
 	},
 	solarized: {
@@ -105,6 +131,11 @@ export const themes: Record<string, Theme> = {
 			statusStopped: "#586e75",
 			warningBackground: "#b58900",
 			warningText: "#002b36",
+			lineNumberText: "#586e75",
+			selectedLineBackground: "#073642",
+			searchMatchBackground: "#b5890033",
+			searchMatchText: "#b58900",
+			searchSlash: "#268bd2",
 		},
 	},
 	gruvbox: {
@@ -121,6 +152,11 @@ export const themes: Record<string, Theme> = {
 			statusStopped: "#928374",
 			warningBackground: "#fabd2f",
 			warningText: "#282828",
+			lineNumberText: "#928374",
+			selectedLineBackground: "#3c3836",
+			searchMatchBackground: "#fabd2f33",
+			searchMatchText: "#fabd2f",
+			searchSlash: "#fe8019",
 		},
 	},
 	catppuccin: {
@@ -137,6 +173,11 @@ export const themes: Record<string, Theme> = {
 			statusStopped: "#6c7086",
 			warningBackground: "#f9e2af",
 			warningText: "#1e1e2e",
+			lineNumberText: "#6c7086",
+			selectedLineBackground: "#313244",
+			searchMatchBackground: "#f9e2af33",
+			searchMatchText: "#f9e2af",
+			searchSlash: "#cba6f7",
 		},
 	},
 };
@@ -236,6 +277,28 @@ function dimColor(hex: string, amount: number): string {
 }
 
 /**
+ * Lightens a hex color by mixing it with white.
+ * @param hex - Hex color string
+ * @param amount - Amount to lighten (0-1, where 0 is no change and 1 is white)
+ */
+function lightenColor(hex: string, amount: number): string {
+	const color = hex.replace(/^#/, "");
+	const r = Math.round(
+		Number.parseInt(color.substring(0, 2), 16) +
+			(255 - Number.parseInt(color.substring(0, 2), 16)) * amount,
+	);
+	const g = Math.round(
+		Number.parseInt(color.substring(2, 4), 16) +
+			(255 - Number.parseInt(color.substring(2, 4), 16)) * amount,
+	);
+	const b = Math.round(
+		Number.parseInt(color.substring(4, 6), 16) +
+			(255 - Number.parseInt(color.substring(4, 6), 16)) * amount,
+	);
+	return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+}
+
+/**
  * Builds a Theme object from terminal colors.
  * Maps ANSI palette colors to semantic theme colors.
  *
@@ -265,6 +328,12 @@ export function buildTerminalTheme(colors: TerminalColors): Theme {
 	// Create a dimmed version of foreground for stopped status
 	const statusStopped = dimColor(foreground, 0.4);
 
+	// Create a dimmed version of foreground for line numbers
+	const lineNumberText = dimColor(foreground, 0.5);
+
+	// Create a slightly lighter background for selection
+	const selectedLineBackground = lightenColor(background, 0.15);
+
 	return {
 		name: "Terminal",
 		colors: {
@@ -279,6 +348,11 @@ export function buildTerminalTheme(colors: TerminalColors): Theme {
 			statusStopped,
 			warningBackground: paletteYellow,
 			warningText,
+			lineNumberText,
+			selectedLineBackground,
+			searchMatchBackground: `${paletteYellow}33`,
+			searchMatchText: paletteYellow,
+			searchSlash: paletteBlue,
 		},
 	};
 }

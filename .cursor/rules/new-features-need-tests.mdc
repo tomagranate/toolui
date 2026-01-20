@@ -1,0 +1,35 @@
+---
+description: New features should include tests
+globs: "*.ts, *.tsx"
+alwaysApply: false
+---
+
+When implementing new features, you MUST also write tests:
+
+## Requirements
+
+1. **Unit tests for utilities** - Any new utility functions (in `lib/` or `utils/`) should have corresponding test files
+2. **Component tests** - New React components or significant component changes should have tests
+3. **Test file location** - Place tests in a `__tests__` folder adjacent to the source file, following the existing pattern:
+   - `src/lib/clipboard/clipboard.ts` → `src/lib/clipboard/__tests__/clipboard.test.ts`
+   - `src/components/LogViewer.tsx` → `src/components/__tests__/LogViewer.test.ts`
+
+## Test Guidelines
+
+- Use `bun test` as the test runner
+- Use `describe` blocks to group related tests
+- Use clear, descriptive test names that explain expected behavior
+- Test both success cases and edge cases
+- For React components, test:
+  - Rendering with different props
+  - User interactions (keyboard, mouse)
+  - State changes
+  - Edge cases (empty data, error states)
+
+## Running Tests
+
+\`\`\`bash
+bun test              # Run all tests
+bun test --watch      # Run in watch mode
+bun test <pattern>    # Run tests matching pattern
+\`\`\`

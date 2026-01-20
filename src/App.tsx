@@ -1,13 +1,31 @@
 import { type CliRenderer, TextAttributes } from "@opentui/core";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { CommandPalette, commandPalette } from "./components/CommandPalette";
+import { HelpBar, type HelpBarMode } from "./components/HelpBar";
 import { LogViewer } from "./components/LogViewer";
 import { TabBar } from "./components/TabBar";
+import { ToastContainer } from "./components/Toast";
 import { StatusIcons } from "./constants";
 import type { Config } from "./lib/config";
 import type { ProcessManager } from "./lib/processes";
 import type { Theme } from "./lib/theme";
 import type { ToolState } from "./types";
+
+/** Per-tab search state */
+interface TabSearchState {
+	searchMode: boolean;
+	searchQuery: string;
+	filterMode: boolean;
+	currentMatchIndex: number;
+}
+
+const DEFAULT_SEARCH_STATE: TabSearchState = {
+	searchMode: false,
+	searchQuery: "",
+	filterMode: true, // Default ON per requirements
+	currentMatchIndex: 0,
+};
 
 interface AppProps {
 	processManager: ProcessManager;
@@ -29,7 +47,38 @@ export function App({
 	const [tools, setTools] = useState<ToolState[]>(initialTools);
 	const [activeIndex, setActiveIndex] = useState(0);
 	const [navigationKey, setNavigationKey] = useState(0);
+	const [tabSearchStates, setTabSearchStates] = useState<
+		Map<string, TabSearchState>
+	>(new Map());
+	const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+	const [shortcutsOpen, setShortcutsOpen] = useState(false);
 	const { width: terminalWidth } = useTerminalDimensions();
+
+	// Get search state for a specific tab (returns default if not set)
+	const getTabSearchState = useCallback(
+		(toolName: string): TabSearchState => {
+			return tabSearchStates.get(toolName) ?? { ...DEFAULT_SEARCH_STATE };
+		},
+		[tabSearchStates],
+	);
+
+	// Update search state for a specific tab
+	const updateTabSearchState = useCallback(
+		(toolName: string, updates: Partial<TabSearchState>) => {
+			setTabSearchStates((prev) => {
+				const newMap = new Map(prev);
+				const current = prev.get(toolName) ?? { ...DEFAULT_SEARCH_STATE };
+				newMap.set(toolName, { ...current, ...updates });
+				return newMap;
+			});
+		},
+		[],
+	);
+
+	// Get current tab's search state
+	const currentTool = tools[activeIndex];
+	const currentToolName = currentTool?.config.name ?? "";
+	const currentSearchState = getTabSearchState(currentToolName);
 
 	const widthThreshold = config.ui?.widthThreshold ?? DEFAULT_WIDTH_THRESHOLD;
 	const sidebarPosition = config.ui?.sidebarPosition ?? "left";
@@ -53,6 +102,65 @@ export function App({
 		}
 	}, [processManager, initialTools.length]);
 
+	// Register commands for the command palette
+	useEffect(() => {
+		const commands = [
+			{
+				id: "search",
+				label: "Search logs",
+				shortcut: "/",
+				category: "Navigation",
+				action: () => {
+					if (currentToolName) {
+						updateTabSearchState(currentToolName, { searchMode: true });
+					}
+				},
+			},
+			{
+				id: "quit",
+				label: "Quit",
+				shortcut: "q",
+				category: "Application",
+				action: async () => {
+					await processManager.cleanup();
+					renderer.stop();
+					renderer.destroy();
+					process.exit(0);
+				},
+			},
+			{
+				id: "shortcuts",
+				label: "Show keyboard shortcuts",
+				shortcut: "?",
+				category: "Help",
+				action: () => setShortcutsOpen(true),
+			},
+		];
+
+		// Add tab switching commands
+		for (let i = 0; i < Math.min(9, tools.length); i++) {
+			const tool = tools[i];
+			if (tool) {
+				commands.push({
+					id: `switch-tab-${i}`,
+					label: `Switch to ${tool.config.name}`,
+					shortcut: `${i + 1}`,
+					category: "Tabs",
+					action: () => {
+						setNavigationKey((k) => k + 1);
+						setActiveIndex(i);
+					},
+				});
+			}
+		}
+
+		commandPalette.register(commands);
+
+		return () => {
+			commandPalette.clear();
+		};
+	}, [tools, processManager, renderer, currentToolName, updateTabSearchState]);
+
 	// Handle keyboard input
 	useKeyboard(async (key) => {
 		const isShuttingDown = processManager.getIsShuttingDown();
@@ -70,6 +178,28 @@ export function App({
 			renderer.stop();
 			renderer.destroy();
 			process.exit(0);
+			return;
+		}
+
+		// Skip most key handling when modals are open (they handle their own input)
+		if (commandPaletteOpen || shortcutsOpen) {
+			return;
+		}
+
+		// Skip most key handling when in search mode (LogViewer handles it)
+		if (currentSearchState.searchMode) {
+			return;
+		}
+
+		// Command palette shortcut: Ctrl+P or Ctrl+K
+		if (key.ctrl && (key.name === "p" || key.name === "k")) {
+			setCommandPaletteOpen(true);
+			return;
+		}
+
+		// Shortcuts modal: ?
+		if (key.name === "?") {
+			setShortcutsOpen(true);
 			return;
 		}
 
@@ -130,7 +260,6 @@ export function App({
 	});
 
 	// Find the active tool index in the filtered list
-	const currentTool = tools[activeIndex];
 	const activeToolIndex = currentTool ? activeTools.indexOf(currentTool) : -1;
 	const displayActiveIndex = activeToolIndex >= 0 ? activeToolIndex : 0;
 	const activeTool = activeTools[displayActiveIndex];
@@ -176,6 +305,8 @@ export function App({
 		/>
 	);
 
+	const showLineNumbers = config.ui?.showLineNumbers ?? "auto";
+
 	const logViewerComponent = (
 		<box
 			flexGrow={1}
@@ -185,7 +316,27 @@ export function App({
 			borderStyle="rounded"
 		>
 			{activeTool ? (
-				<LogViewer tool={activeTool} theme={theme} />
+				<LogViewer
+					tool={activeTool}
+					theme={theme}
+					searchMode={currentSearchState.searchMode}
+					searchQuery={currentSearchState.searchQuery}
+					filterMode={currentSearchState.filterMode}
+					currentMatchIndex={currentSearchState.currentMatchIndex}
+					onSearchModeChange={(active) =>
+						updateTabSearchState(activeTool.config.name, { searchMode: active })
+					}
+					onSearchQueryChange={(query) =>
+						updateTabSearchState(activeTool.config.name, {
+							searchQuery: query,
+							currentMatchIndex: 0,
+						})
+					}
+					onFilterModeChange={(filter) =>
+						updateTabSearchState(activeTool.config.name, { filterMode: filter })
+					}
+					showLineNumbers={showLineNumbers}
+				/>
 			) : (
 				<scrollbox
 					flexGrow={1}
@@ -237,20 +388,31 @@ export function App({
 					{horizontalTabPosition === "bottom" && tabBarComponent}
 				</box>
 			)}
-			<box
-				height={3}
-				border
-				borderStyle="rounded"
-				paddingLeft={1}
-				paddingRight={1}
-				backgroundColor={theme.colors.background}
-			>
-				<text fg={theme.colors.text}>
-					{useVertical
-						? "←/→ or h/l: switch tabs | Page Up/Down: scroll logs | Home/End: top/bottom | q: quit"
-						: "←/→ or h/l: switch tabs | 1-9: jump to tab | Page Up/Down: scroll logs | Home/End: top/bottom | q: quit"}
-				</text>
-			</box>
+			<HelpBar
+				theme={theme}
+				mode={getHelpBarMode()}
+				isVerticalLayout={useVertical}
+				width={terminalWidth}
+			/>
+			<ToastContainer theme={theme} />
+			<CommandPalette
+				theme={theme}
+				isOpen={commandPaletteOpen}
+				onClose={() => setCommandPaletteOpen(false)}
+			/>
+			<CommandPalette
+				theme={theme}
+				isOpen={shortcutsOpen}
+				onClose={() => setShortcutsOpen(false)}
+				showShortcuts
+			/>
 		</box>
 	);
+
+	function getHelpBarMode(): HelpBarMode {
+		if (commandPaletteOpen) return "commandPalette";
+		if (shortcutsOpen) return "shortcuts";
+		if (currentSearchState.searchMode) return "search";
+		return "normal";
+	}
 }

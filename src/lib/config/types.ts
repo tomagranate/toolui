@@ -20,5 +20,12 @@ export interface Config {
 		maxLogLines?: number;
 		/** Show shortcut numbers (1-9) on the first 9 tabs. Default: false */
 		showTabNumbers?: boolean;
+		/**
+		 * Show line numbers in log viewer.
+		 * - true: Always show line numbers
+		 * - false: Never show line numbers
+		 * - "auto": Show line numbers when terminal width >= 80 (default)
+		 */
+		showLineNumbers?: boolean | "auto";
 	};
 }
