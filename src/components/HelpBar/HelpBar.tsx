@@ -5,8 +5,6 @@ export type HelpBarMode = "normal" | "search" | "commandPalette" | "shortcuts";
 interface HelpBarProps {
 	theme: Theme;
 	mode: HelpBarMode;
-	/** Whether the layout is vertical (sidebar) or horizontal (top/bottom tabs) */
-	isVerticalLayout: boolean;
 	/** Terminal width for responsive display */
 	width: number;
 }
@@ -25,7 +23,7 @@ interface HintItem {
 /**
  * Get hints based on current mode
  */
-function getHintsForMode(mode: HelpBarMode, isVertical: boolean): HintItem[] {
+function getHintsForMode(mode: HelpBarMode): HintItem[] {
 	switch (mode) {
 		case "search":
 			return [
@@ -63,23 +61,9 @@ function getHintsForMode(mode: HelpBarMode, isVertical: boolean): HintItem[] {
 			];
 
 		default: {
-			const tabHint = isVertical
-				? {
-						key: "j/k",
-						compactKey: "j/k",
-						action: "tabs",
-						compactAction: "tabs",
-					}
-				: {
-						key: "h/l",
-						compactKey: "h/l",
-						action: "tabs",
-						compactAction: "tabs",
-					};
-
 			return [
 				{
-					key: "^P",
+					key: "Ctrl+P",
 					compactKey: "^P",
 					action: "palette",
 					compactAction: "cmd",
@@ -90,7 +74,6 @@ function getHintsForMode(mode: HelpBarMode, isVertical: boolean): HintItem[] {
 					action: "shortcuts",
 					compactAction: "keys",
 				},
-				tabHint,
 				{ key: "/", compactKey: "/", action: "search", compactAction: "find" },
 				{ key: "q", compactKey: "q", action: "quit", compactAction: "quit" },
 			];
@@ -126,18 +109,13 @@ export function formatHints(hints: HintItem[], availableWidth: number): string {
 	return `${ultraCompact.slice(0, availableWidth - 1)}…`;
 }
 
-export function HelpBar({
-	theme,
-	mode,
-	isVerticalLayout,
-	width,
-}: HelpBarProps) {
+export function HelpBar({ theme, mode, width }: HelpBarProps) {
 	const { colors } = theme;
 
 	// Account for padding (1 char each side = 2 total)
 	const availableWidth = width - 2;
 
-	const hints = getHintsForMode(mode, isVerticalLayout);
+	const hints = getHintsForMode(mode);
 	const displayText = formatHints(hints, availableWidth);
 
 	return (

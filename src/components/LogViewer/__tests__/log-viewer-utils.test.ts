@@ -1,11 +1,21 @@
 import { describe, expect, test } from "bun:test";
 import {
+	buildLineHeightCache,
 	calculateContentWidth,
 	calculateHighlightSegments,
+	calculateLineRows,
 	calculateScrollInfo,
+	calculateVisibleRange,
+	extendLineHeightCache,
+	findLineAtRow,
 	findMatchingLines,
 	getLineNumberWidth,
+	getLineStartRow,
+	getTotalRows,
+	OVERSCAN_COUNT,
+	shouldVirtualize,
 	truncateLine,
+	VIRTUALIZATION_THRESHOLD,
 } from "../log-viewer-utils";
 
 describe("getLineNumberWidth", () => {
@@ -535,5 +545,345 @@ describe("calculateHighlightSegments", () => {
 		// The matched text should preserve original casing
 		expect(result[0]).toEqual({ text: "ERROR", isMatch: true });
 		expect(result[2]).toEqual({ text: "Error", isMatch: true });
+	});
+});
+
+describe("calculateVisibleRange", () => {
+	test("returns empty range for zero lines", () => {
+		const result = calculateVisibleRange({
+			scrollTop: 0,
+			viewportHeight: 50,
+			totalLines: 0,
+			cache: null,
+		});
+		expect(result).toEqual({
+			start: 0,
+			end: 0,
+			topSpacerHeight: 0,
+			bottomSpacerHeight: 0,
+		});
+	});
+
+	test("returns empty range for zero viewport height", () => {
+		const result = calculateVisibleRange({
+			scrollTop: 0,
+			viewportHeight: 0,
+			totalLines: 100,
+			cache: null,
+		});
+		expect(result).toEqual({
+			start: 0,
+			end: 0,
+			topSpacerHeight: 0,
+			bottomSpacerHeight: 0,
+		});
+	});
+
+	test("calculates correct range at top of content (no cache)", () => {
+		const result = calculateVisibleRange({
+			scrollTop: 0,
+			viewportHeight: 30,
+			totalLines: 1000,
+			cache: null,
+		});
+		// Should start at 0 (can't go negative with overscan)
+		expect(result.start).toBe(0);
+		// End should be viewportHeight + overscan
+		expect(result.end).toBe(30 + OVERSCAN_COUNT);
+		expect(result.topSpacerHeight).toBe(0);
+		expect(result.bottomSpacerHeight).toBe(1000 - result.end);
+	});
+
+	test("calculates correct range in middle of content (no cache)", () => {
+		const result = calculateVisibleRange({
+			scrollTop: 500,
+			viewportHeight: 30,
+			totalLines: 1000,
+			cache: null,
+		});
+		// Start should be scrollTop - overscan
+		expect(result.start).toBe(500 - OVERSCAN_COUNT);
+		// End should be scrollTop + viewportHeight + overscan
+		expect(result.end).toBe(500 + 30 + OVERSCAN_COUNT);
+		expect(result.topSpacerHeight).toBe(result.start);
+		expect(result.bottomSpacerHeight).toBe(1000 - result.end);
+	});
+
+	test("calculates correct range at bottom of content (no cache)", () => {
+		const result = calculateVisibleRange({
+			scrollTop: 970,
+			viewportHeight: 30,
+			totalLines: 1000,
+			cache: null,
+		});
+		// Start should be scrollTop - overscan
+		expect(result.start).toBe(970 - OVERSCAN_COUNT);
+		// End should be capped at totalLines
+		expect(result.end).toBe(1000);
+		expect(result.topSpacerHeight).toBe(result.start);
+		expect(result.bottomSpacerHeight).toBe(0);
+	});
+
+	test("handles small content that fits in viewport", () => {
+		const result = calculateVisibleRange({
+			scrollTop: 0,
+			viewportHeight: 100,
+			totalLines: 50,
+			cache: null,
+		});
+		// Should render all lines
+		expect(result.start).toBe(0);
+		expect(result.end).toBe(50);
+		expect(result.topSpacerHeight).toBe(0);
+		expect(result.bottomSpacerHeight).toBe(0);
+	});
+
+	test("respects custom overscan value", () => {
+		const result = calculateVisibleRange({
+			scrollTop: 500,
+			viewportHeight: 30,
+			totalLines: 1000,
+			cache: null,
+			overscan: 5,
+		});
+		expect(result.start).toBe(500 - 5);
+		expect(result.end).toBe(500 + 30 + 5);
+	});
+
+	test("handles fractional scroll position", () => {
+		const result = calculateVisibleRange({
+			scrollTop: 500.5,
+			viewportHeight: 30,
+			totalLines: 1000,
+			cache: null,
+		});
+		// firstVisibleLine = floor(500.5) = 500
+		// lastVisibleLine = ceil(500.5 + 30) = 531
+		expect(result.start).toBe(500 - OVERSCAN_COUNT);
+		expect(result.end).toBe(531 + OVERSCAN_COUNT);
+	});
+
+	test("spacers plus visible range equals total lines (no cache)", () => {
+		const result = calculateVisibleRange({
+			scrollTop: 300,
+			viewportHeight: 50,
+			totalLines: 1000,
+			cache: null,
+		});
+		const visibleCount = result.end - result.start;
+		expect(
+			result.topSpacerHeight + visibleCount + result.bottomSpacerHeight,
+		).toBe(1000);
+	});
+});
+
+describe("shouldVirtualize", () => {
+	test("returns false for small number of lines", () => {
+		expect(shouldVirtualize(50)).toBe(false);
+		expect(shouldVirtualize(99)).toBe(false);
+	});
+
+	test("returns false at exactly the threshold", () => {
+		expect(shouldVirtualize(VIRTUALIZATION_THRESHOLD - 1)).toBe(false);
+	});
+
+	test("returns true above threshold", () => {
+		expect(shouldVirtualize(VIRTUALIZATION_THRESHOLD)).toBe(true);
+		expect(shouldVirtualize(1000)).toBe(true);
+		expect(shouldVirtualize(100000)).toBe(true);
+	});
+
+	test("returns false for zero lines", () => {
+		expect(shouldVirtualize(0)).toBe(false);
+	});
+});
+
+describe("Line Height Cache", () => {
+	describe("calculateLineRows", () => {
+		test("returns 1 for empty line", () => {
+			expect(calculateLineRows("", 80, true)).toBe(1);
+			expect(calculateLineRows("", 80, false)).toBe(1);
+		});
+
+		test("returns 1 when lineWrap is false", () => {
+			expect(calculateLineRows("a".repeat(200), 80, false)).toBe(1);
+		});
+
+		test("returns 1 for line that fits in width", () => {
+			expect(calculateLineRows("short line", 80, true)).toBe(1);
+		});
+
+		test("calculates wrapped rows correctly", () => {
+			expect(calculateLineRows("a".repeat(80), 80, true)).toBe(1);
+			expect(calculateLineRows("a".repeat(81), 80, true)).toBe(2);
+			expect(calculateLineRows("a".repeat(160), 80, true)).toBe(2);
+			expect(calculateLineRows("a".repeat(161), 80, true)).toBe(3);
+		});
+
+		test("handles zero/negative content width", () => {
+			expect(calculateLineRows("test", 0, true)).toBe(1);
+			expect(calculateLineRows("test", -10, true)).toBe(1);
+		});
+	});
+
+	describe("buildLineHeightCache", () => {
+		test("builds cache for empty lines array", () => {
+			const cache = buildLineHeightCache([], 80, true);
+			expect(cache.cumulativeRows).toEqual([]);
+			expect(cache.contentWidth).toBe(80);
+			expect(cache.lineWrap).toBe(true);
+		});
+
+		test("builds cache with uniform line heights", () => {
+			const lines = ["short", "line", "here"];
+			const cache = buildLineHeightCache(lines, 80, true);
+			expect(cache.cumulativeRows).toEqual([1, 2, 3]);
+		});
+
+		test("builds cache with mixed line heights", () => {
+			const lines = [
+				"short",
+				"a".repeat(100), // 2 rows at width 80
+				"another short",
+				"b".repeat(200), // 3 rows at width 80
+			];
+			const cache = buildLineHeightCache(lines, 80, true);
+			expect(cache.cumulativeRows).toEqual([1, 3, 4, 7]);
+		});
+
+		test("builds cache without lineWrap", () => {
+			const lines = ["a".repeat(200), "b".repeat(300)];
+			const cache = buildLineHeightCache(lines, 80, false);
+			// Without wrap, each line is 1 row regardless of length
+			expect(cache.cumulativeRows).toEqual([1, 2]);
+		});
+	});
+
+	describe("extendLineHeightCache", () => {
+		test("extends cache with new lines", () => {
+			const cache = buildLineHeightCache(["a", "b"], 80, true);
+			const extended = extendLineHeightCache(cache, ["c", "d"]);
+			expect(extended.cumulativeRows).toEqual([1, 2, 3, 4]);
+		});
+
+		test("handles extending with wrapped lines", () => {
+			const cache = buildLineHeightCache(["short"], 80, true);
+			const extended = extendLineHeightCache(cache, ["a".repeat(160)]);
+			expect(extended.cumulativeRows).toEqual([1, 3]); // 1 + 2 rows
+		});
+
+		test("returns same cache when no new lines", () => {
+			const cache = buildLineHeightCache(["a", "b"], 80, true);
+			const extended = extendLineHeightCache(cache, []);
+			expect(extended).toBe(cache);
+		});
+	});
+
+	describe("getTotalRows", () => {
+		test("returns 0 for empty cache", () => {
+			const cache = buildLineHeightCache([], 80, true);
+			expect(getTotalRows(cache)).toBe(0);
+		});
+
+		test("returns total rows for cache", () => {
+			const cache = buildLineHeightCache(["a", "b", "c"], 80, true);
+			expect(getTotalRows(cache)).toBe(3);
+		});
+	});
+
+	describe("getLineStartRow", () => {
+		test("returns 0 for first line", () => {
+			const cache = buildLineHeightCache(["a", "b", "c"], 80, true);
+			expect(getLineStartRow(cache, 0)).toBe(0);
+		});
+
+		test("returns correct start row", () => {
+			const lines = ["short", "a".repeat(160), "another"];
+			const cache = buildLineHeightCache(lines, 80, true);
+			expect(getLineStartRow(cache, 0)).toBe(0);
+			expect(getLineStartRow(cache, 1)).toBe(1);
+			expect(getLineStartRow(cache, 2)).toBe(3); // After 2-row line
+		});
+	});
+
+	describe("findLineAtRow", () => {
+		test("returns 0 for empty cache", () => {
+			const cache = buildLineHeightCache([], 80, true);
+			expect(findLineAtRow(cache, 5)).toBe(0);
+		});
+
+		test("finds correct line for uniform heights", () => {
+			const cache = buildLineHeightCache(["a", "b", "c", "d", "e"], 80, true);
+			expect(findLineAtRow(cache, 0)).toBe(0);
+			expect(findLineAtRow(cache, 1)).toBe(1);
+			expect(findLineAtRow(cache, 2)).toBe(2);
+			expect(findLineAtRow(cache, 4)).toBe(4);
+		});
+
+		test("finds correct line for mixed heights", () => {
+			const lines = ["short", "a".repeat(160), "another", "b".repeat(240)];
+			const cache = buildLineHeightCache(lines, 80, true);
+			// cumulative: [1, 3, 4, 7]
+			expect(findLineAtRow(cache, 0)).toBe(0); // row 0 -> line 0
+			expect(findLineAtRow(cache, 1)).toBe(1); // row 1 -> line 1 (first row of wrapped)
+			expect(findLineAtRow(cache, 2)).toBe(1); // row 2 -> still line 1
+			expect(findLineAtRow(cache, 3)).toBe(2); // row 3 -> line 2
+			expect(findLineAtRow(cache, 4)).toBe(3); // row 4 -> line 3
+			expect(findLineAtRow(cache, 6)).toBe(3); // row 6 -> still line 3
+		});
+	});
+
+	describe("calculateVisibleRange with cache", () => {
+		test("uses precise calculation when lineWrap is false", () => {
+			// With lineWrap=false, each line is exactly 1 row
+			const lines = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"];
+			const cache = buildLineHeightCache(lines, 80, false);
+			// cumulative: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+			const result = calculateVisibleRange({
+				scrollTop: 3,
+				viewportHeight: 4, // See rows 3-6
+				totalLines: 10,
+				cache,
+				overscan: 1,
+			});
+
+			// firstVisibleLine = 3, lastVisibleLine = 6
+			// With overscan of 1: lines 2-7 (end exclusive = 8)
+			expect(result.start).toBe(2);
+			expect(result.end).toBe(8);
+			expect(result.topSpacerHeight).toBe(2); // Lines 0-1
+			expect(result.bottomSpacerHeight).toBe(2); // Lines 8-9
+		});
+
+		test("uses precise calculation when lineWrap is true with valid cache", () => {
+			// Now we use precise calculation for both lineWrap ON and OFF
+			// since LineMeasurer provides accurate row counts from OpenTUI
+			const lines = [
+				"a".repeat(160), // 2 rows when wrapped at width 80
+				"b".repeat(160), // 2 rows when wrapped at width 80
+				"short", // 1 row
+			];
+			// Total: 5 rows, cumulativeRows = [2, 4, 5]
+			const cache = buildLineHeightCache(lines, 80, true);
+
+			const result = calculateVisibleRange({
+				scrollTop: 0,
+				viewportHeight: 2,
+				totalLines: 3,
+				cache,
+				overscan: 0,
+			});
+
+			// Precise calculation:
+			// - Rows 0-1 visible (scrollTop=0, viewportHeight=2)
+			// - Line 0 covers rows 0-1 (cumulative[0]=2)
+			// - Only line 0 is visible
+			expect(result.start).toBe(0);
+			expect(result.end).toBe(1);
+			// Precise spacer heights (row-based)
+			expect(result.topSpacerHeight).toBe(0);
+			expect(result.bottomSpacerHeight).toBe(3); // Total 5 rows - 2 rendered = 3
+		});
 	});
 });

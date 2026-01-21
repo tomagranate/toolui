@@ -7,6 +7,8 @@ const DEFAULT_TOAST_DURATION = 2000;
 
 interface ToastContainerProps {
 	theme: Theme;
+	/** Top offset for positioning (accounts for tab bar, etc.) */
+	topOffset?: number;
 }
 
 interface ToastItemProps {
@@ -41,8 +43,16 @@ function ToastItem({ toast: t, theme, onDismiss }: ToastItemProps) {
 
 	const borderColor = getBorderColor();
 
+	const handleClick = useCallback(() => {
+		onDismiss(t.id);
+	}, [onDismiss, t.id]);
+
 	return (
-		<box flexDirection="row" backgroundColor={colors.surface2}>
+		<box
+			flexDirection="row"
+			backgroundColor={colors.surface2}
+			{...({ onMouseDown: handleClick } as Record<string, unknown>)}
+		>
 			{/* Left accent stripe using partial block character */}
 			<text fg={borderColor}>{"▎\n▎\n▎"}</text>
 			{/* Toast content with padding */}
@@ -53,7 +63,7 @@ function ToastItem({ toast: t, theme, onDismiss }: ToastItemProps) {
 	);
 }
 
-export function ToastContainer({ theme }: ToastContainerProps) {
+export function ToastContainer({ theme, topOffset = 1 }: ToastContainerProps) {
 	const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
 	// Subscribe to toast events
@@ -75,7 +85,7 @@ export function ToastContainer({ theme }: ToastContainerProps) {
 	return (
 		<box
 			position="absolute"
-			top={1}
+			top={topOffset}
 			right={2}
 			flexDirection="column"
 			gap={1}

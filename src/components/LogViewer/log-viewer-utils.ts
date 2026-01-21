@@ -121,6 +121,266 @@ export function calculateScrollInfo({
 }
 
 // ============================================================================
+// Virtualization utilities
+// ============================================================================
+
+/** Number of lines to render above/below the viewport for smooth scrolling.
+ * Set high to allow large hysteresis buffer and prevent oscillation from spacer changes. */
+export const OVERSCAN_COUNT = 200;
+
+/** Minimum number of lines before virtualization kicks in */
+export const VIRTUALIZATION_THRESHOLD = 100;
+
+export interface VisibleRange {
+	/** First line index to render */
+	start: number;
+	/** Last line index to render (exclusive) */
+	end: number;
+	/** Height of spacer above visible content (in rows) */
+	topSpacerHeight: number;
+	/** Height of spacer below visible content (in rows) */
+	bottomSpacerHeight: number;
+}
+
+/**
+ * Determine if virtualization should be enabled.
+ * Disabled only for small logs.
+ */
+export function shouldVirtualize(totalLines: number): boolean {
+	return totalLines >= VIRTUALIZATION_THRESHOLD;
+}
+
+// ============================================================================
+// Line Height Cache - Precise tracking of wrapped line heights
+// ============================================================================
+
+/**
+ * Cache that tracks the cumulative row count for each line.
+ * This allows O(1) lookup of line positions and O(log n) lookup of which line is at a row.
+ */
+export interface LineHeightCache {
+	/** cumulativeRows[i] = total rows from line 0 through line i (inclusive) */
+	cumulativeRows: number[];
+	/** The content width used for this calculation */
+	contentWidth: number;
+	/** Whether lineWrap was enabled */
+	lineWrap: boolean;
+}
+
+/**
+ * Calculate how many terminal rows a single line occupies.
+ */
+export function calculateLineRows(
+	line: string,
+	contentWidth: number,
+	lineWrap: boolean,
+): number {
+	if (!lineWrap) return 1;
+	if (line.length === 0) return 1;
+	if (contentWidth <= 0) return 1;
+	return Math.ceil(line.length / contentWidth);
+}
+
+/**
+ * Create an empty line height cache.
+ */
+export function createLineHeightCache(
+	contentWidth: number,
+	lineWrap: boolean,
+): LineHeightCache {
+	return {
+		cumulativeRows: [],
+		contentWidth,
+		lineWrap,
+	};
+}
+
+/**
+ * Build a complete line height cache from all lines.
+ */
+export function buildLineHeightCache(
+	lines: string[],
+	contentWidth: number,
+	lineWrap: boolean,
+): LineHeightCache {
+	const cumulativeRows: number[] = new Array(lines.length);
+	let total = 0;
+
+	for (let i = 0; i < lines.length; i++) {
+		total += calculateLineRows(lines[i] ?? "", contentWidth, lineWrap);
+		cumulativeRows[i] = total;
+	}
+
+	return { cumulativeRows, contentWidth, lineWrap };
+}
+
+/**
+ * Extend an existing cache with new lines (for incremental updates).
+ * Returns a new cache object (does not mutate the input).
+ */
+export function extendLineHeightCache(
+	cache: LineHeightCache,
+	newLines: string[],
+): LineHeightCache {
+	if (newLines.length === 0) return cache;
+
+	const { cumulativeRows, contentWidth, lineWrap } = cache;
+	const newCumulativeRows = [...cumulativeRows];
+	let total =
+		cumulativeRows.length > 0
+			? (cumulativeRows[cumulativeRows.length - 1] ?? 0)
+			: 0;
+
+	for (const line of newLines) {
+		total += calculateLineRows(line, contentWidth, lineWrap);
+		newCumulativeRows.push(total);
+	}
+
+	return { cumulativeRows: newCumulativeRows, contentWidth, lineWrap };
+}
+
+/**
+ * Get the total number of rows for all content.
+ */
+export function getTotalRows(cache: LineHeightCache): number {
+	const { cumulativeRows } = cache;
+	if (cumulativeRows.length === 0) return 0;
+	return cumulativeRows[cumulativeRows.length - 1] ?? 0;
+}
+
+/**
+ * Get the row offset where a specific line starts.
+ */
+export function getLineStartRow(
+	cache: LineHeightCache,
+	lineIndex: number,
+): number {
+	if (lineIndex <= 0) return 0;
+	return cache.cumulativeRows[lineIndex - 1] ?? 0;
+}
+
+/**
+ * Find which line index contains a given row using binary search.
+ */
+export function findLineAtRow(cache: LineHeightCache, row: number): number {
+	const { cumulativeRows } = cache;
+	if (cumulativeRows.length === 0) return 0;
+	if (row <= 0) return 0;
+
+	// Binary search for first cumulative value > row
+	let lo = 0;
+	let hi = cumulativeRows.length - 1;
+
+	while (lo < hi) {
+		const mid = Math.floor((lo + hi) / 2);
+		if ((cumulativeRows[mid] ?? 0) <= row) {
+			lo = mid + 1;
+		} else {
+			hi = mid;
+		}
+	}
+
+	return Math.min(lo, cumulativeRows.length - 1);
+}
+
+interface CalculateVisibleRangeParams {
+	scrollTop: number;
+	viewportHeight: number;
+	totalLines: number;
+	cache: LineHeightCache | null;
+	overscan?: number;
+}
+
+/**
+ * Calculate which lines should be rendered based on scroll position.
+ * Uses precise line height cache when available (populated via LineMeasurer
+ * which uses OpenTUI's actual wrapping algorithm).
+ *
+ * When no cache is available, falls back to 1-row-per-line approximation.
+ */
+export function calculateVisibleRange({
+	scrollTop,
+	viewportHeight,
+	totalLines,
+	cache,
+	overscan = OVERSCAN_COUNT,
+}: CalculateVisibleRangeParams): VisibleRange {
+	// If no lines or tiny viewport, show nothing
+	if (totalLines === 0 || viewportHeight <= 0) {
+		return { start: 0, end: 0, topSpacerHeight: 0, bottomSpacerHeight: 0 };
+	}
+
+	// Use precise calculation when we have a valid cache
+	// The cache is now populated using LineMeasurer (OpenTUI's real wrapping)
+	// so it's accurate for both lineWrap ON and OFF
+	if (cache && cache.cumulativeRows.length === totalLines) {
+		return calculateVisibleRangePrecise(
+			cache,
+			scrollTop,
+			viewportHeight,
+			totalLines,
+			overscan,
+		);
+	}
+
+	// Fallback: simple calculation assuming 1 row per line
+	// This is only used when cache isn't ready yet
+	const firstVisibleLine = Math.floor(scrollTop);
+	const lastVisibleLine = Math.ceil(scrollTop + viewportHeight);
+
+	const start = Math.max(0, firstVisibleLine - overscan);
+	const end = Math.min(totalLines, lastVisibleLine + overscan);
+
+	return {
+		start,
+		end,
+		topSpacerHeight: start,
+		bottomSpacerHeight: Math.max(0, totalLines - end),
+	};
+}
+
+/**
+ * Calculate visible range using precise line height information.
+ */
+function calculateVisibleRangePrecise(
+	cache: LineHeightCache,
+	scrollTop: number,
+	viewportHeight: number,
+	totalLines: number,
+	overscan: number,
+): VisibleRange {
+	const totalRows = getTotalRows(cache);
+
+	// Find first and last visible lines based on row position
+	// firstVisibleRow: first row that overlaps the viewport
+	// lastVisibleRow: last row that overlaps the viewport (not the first row after)
+	const firstVisibleRow = Math.floor(scrollTop);
+	const lastVisibleRow = Math.max(0, Math.ceil(scrollTop + viewportHeight) - 1);
+
+	const firstVisibleLine = findLineAtRow(cache, firstVisibleRow);
+	const lastVisibleLine = Math.min(
+		totalLines - 1,
+		findLineAtRow(cache, lastVisibleRow),
+	);
+
+	// Add overscan buffer (in lines)
+	const start = Math.max(0, firstVisibleLine - overscan);
+	const end = Math.min(totalLines, lastVisibleLine + 1 + overscan);
+
+	// Calculate spacer heights in ROWS (for correct layout)
+	const topSpacerHeight = getLineStartRow(cache, start);
+	const endRow = end > 0 ? (cache.cumulativeRows[end - 1] ?? 0) : 0;
+	const bottomSpacerHeight = Math.max(0, totalRows - endRow);
+
+	return {
+		start,
+		end,
+		topSpacerHeight,
+		bottomSpacerHeight,
+	};
+}
+
+// ============================================================================
 // Highlight matching utilities
 // ============================================================================
 

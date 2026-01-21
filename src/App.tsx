@@ -1,12 +1,19 @@
 import { type CliRenderer, TextAttributes } from "@opentui/core";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CommandPalette, commandPalette } from "./components/CommandPalette";
 import { HelpBar, type HelpBarMode } from "./components/HelpBar";
 import { LogViewer } from "./components/LogViewer";
+import { lineHeightCacheStore } from "./components/LogViewer/LineHeightCacheStore";
+import {
+	calculateContentWidth,
+	getLineNumberWidth,
+	LINE_NUMBER_WIDTH_THRESHOLD,
+} from "./components/LogViewer/log-viewer-utils";
 import { TabBar } from "./components/TabBar";
-import { ToastContainer } from "./components/Toast";
+import { ToastContainer, toast } from "./components/Toast";
 import { StatusIcons } from "./constants";
+import { useToolsList } from "./hooks";
 import type { Config } from "./lib/config";
 import type { ProcessManager } from "./lib/processes";
 import type { Theme } from "./lib/theme";
@@ -44,7 +51,8 @@ export function App({
 	config,
 	theme,
 }: AppProps) {
-	const [tools, setTools] = useState<ToolState[]>(initialTools);
+	// Use hook that only re-renders when tool status/logs actually change
+	const tools = useToolsList(processManager, 100);
 	const [activeIndex, setActiveIndex] = useState(0);
 	const [navigationKey, setNavigationKey] = useState(0);
 	const [tabSearchStates, setTabSearchStates] = useState<
@@ -87,14 +95,24 @@ export function App({
 	const showTabNumbers = config.ui?.showTabNumbers ?? false;
 	const useVertical = terminalWidth >= widthThreshold;
 
-	// Update tools state periodically to reflect log changes
-	useEffect(() => {
-		const interval = setInterval(() => {
-			setTools([...processManager.getTools()]);
-		}, 100);
+	// Calculate sidebar width when in vertical mode (for LogViewer truncation calculation)
+	// Vertical TabBar has width={20} + gap (1 char) = 21 chars
+	const sidebarWidth = useVertical ? 21 : 0;
 
-		return () => clearInterval(interval);
-	}, [processManager]);
+	// Calculate content width for cache measurement (mirrors LogViewer calculation)
+	const showLineNumbers = config.ui?.showLineNumbers ?? "auto";
+	const shouldShowLineNumbers =
+		showLineNumbers === true ||
+		(showLineNumbers === "auto" &&
+			terminalWidth >= LINE_NUMBER_WIDTH_THRESHOLD);
+	const maxLogLines = Math.max(...tools.map((t) => t.logs.length), 100);
+	const lineNumberWidth = getLineNumberWidth(maxLogLines);
+	const contentWidth = calculateContentWidth({
+		terminalWidth,
+		sidebarWidth,
+		showLineNumbers: shouldShowLineNumbers,
+		lineNumberWidth,
+	});
 
 	// Start all tools on mount
 	useEffect(() => {
@@ -102,6 +120,81 @@ export function App({
 			processManager.startTool(i);
 		}
 	}, [processManager, initialTools.length]);
+
+	// Track previous tool statuses for exit detection
+	const prevToolStatusesRef = useRef<Map<string, string>>(new Map());
+
+	// Detect process exits and show toast (unless shutting down)
+	useEffect(() => {
+		const isShuttingDown = processManager.getIsShuttingDown();
+		if (isShuttingDown) return;
+
+		for (const tool of tools) {
+			const toolName = tool.config.name;
+			const prevStatus = prevToolStatusesRef.current.get(toolName);
+			const currentStatus = tool.status;
+
+			// Detect transition from "running" to "stopped" or "error"
+			if (prevStatus === "running" && currentStatus !== "running") {
+				const exitToastDuration = 5000;
+				if (currentStatus === "stopped") {
+					toast.info(`${toolName} exited`, exitToastDuration);
+				} else if (currentStatus === "error") {
+					toast.error(
+						`${toolName} exited with error (code ${tool.exitCode})`,
+						exitToastDuration,
+					);
+				}
+			}
+
+			// Update tracked status
+			prevToolStatusesRef.current.set(toolName, currentStatus);
+		}
+	}, [tools, processManager]);
+
+	// Initialize proactive cache measurement
+	const measurerInitialized = useRef(false);
+	useEffect(() => {
+		if (!measurerInitialized.current) {
+			lineHeightCacheStore.initializeMeasurer(
+				renderer.widthMethod,
+				contentWidth,
+			);
+			lineHeightCacheStore.startBackgroundMeasurement(200);
+			measurerInitialized.current = true;
+		}
+
+		// Cleanup on unmount
+		return () => {
+			lineHeightCacheStore.stopBackgroundMeasurement();
+		};
+	}, [renderer.widthMethod, contentWidth]);
+
+	// Update cache settings when they change
+	useEffect(() => {
+		lineHeightCacheStore.setWrapWidth(contentWidth);
+	}, [contentWidth]);
+
+	useEffect(() => {
+		lineHeightCacheStore.setLineWrap(lineWrap);
+	}, [lineWrap]);
+
+	// Register tool sources for proactive measurement
+	const toolSources = useMemo(
+		() =>
+			tools.map((tool) => ({
+				name: tool.config.name,
+				getLines: () =>
+					tool.logs.map((segments) =>
+						segments.map((segment) => segment.text).join(""),
+					),
+			})),
+		[tools],
+	);
+
+	useEffect(() => {
+		lineHeightCacheStore.registerToolSources(toolSources);
+	}, [toolSources]);
 
 	// Toggle line wrap function (used by both keyboard and command palette)
 	const toggleLineWrap = useCallback(() => {
@@ -363,61 +456,58 @@ export function App({
 		/>
 	);
 
-	const showLineNumbers = config.ui?.showLineNumbers ?? "auto";
-
-	// Calculate sidebar width when in vertical mode (for LogViewer truncation calculation)
-	// Vertical TabBar has width={20} + gap (1 char) = 21 chars
-	const sidebarWidth = useVertical ? 21 : 0;
-
-	const logViewerComponent = (
-		<box
+	const logViewerComponent = activeTool ? (
+		<LogViewer
+			tool={activeTool}
+			theme={theme}
+			searchMode={currentSearchState.searchMode}
+			searchQuery={currentSearchState.searchQuery}
+			filterMode={currentSearchState.filterMode}
+			currentMatchIndex={currentSearchState.currentMatchIndex}
+			onSearchModeChange={(active) =>
+				updateTabSearchState(activeTool.config.name, { searchMode: active })
+			}
+			onSearchQueryChange={(query) =>
+				updateTabSearchState(activeTool.config.name, {
+					searchQuery: query,
+					currentMatchIndex: 0,
+				})
+			}
+			onFilterModeChange={(filter) =>
+				updateTabSearchState(activeTool.config.name, { filterMode: filter })
+			}
+			onCurrentMatchIndexChange={(index) =>
+				updateTabSearchState(activeTool.config.name, {
+					currentMatchIndex: index,
+				})
+			}
+			showLineNumbers={showLineNumbers}
+			lineWrap={lineWrap}
+			sidebarWidth={sidebarWidth}
+		/>
+	) : (
+		<scrollbox
 			flexGrow={1}
-			flexDirection="column"
 			height="100%"
-			backgroundColor={theme.colors.surface0}
+			padding={1}
+			flexDirection="column"
+			backgroundColor={theme.colors.background}
 		>
-			{activeTool ? (
-				<LogViewer
-					tool={activeTool}
-					theme={theme}
-					searchMode={currentSearchState.searchMode}
-					searchQuery={currentSearchState.searchQuery}
-					filterMode={currentSearchState.filterMode}
-					currentMatchIndex={currentSearchState.currentMatchIndex}
-					onSearchModeChange={(active) =>
-						updateTabSearchState(activeTool.config.name, { searchMode: active })
-					}
-					onSearchQueryChange={(query) =>
-						updateTabSearchState(activeTool.config.name, {
-							searchQuery: query,
-							currentMatchIndex: 0,
-						})
-					}
-					onFilterModeChange={(filter) =>
-						updateTabSearchState(activeTool.config.name, { filterMode: filter })
-					}
-					onCurrentMatchIndexChange={(index) =>
-						updateTabSearchState(activeTool.config.name, {
-							currentMatchIndex: index,
-						})
-					}
-					showLineNumbers={showLineNumbers}
-					lineWrap={lineWrap}
-					sidebarWidth={sidebarWidth}
-				/>
-			) : (
-				<scrollbox
-					flexGrow={1}
-					height="100%"
-					padding={1}
-					flexDirection="column"
-					backgroundColor={theme.colors.background}
-				>
-					<text fg={theme.colors.text}>No active processes</text>
-				</scrollbox>
-			)}
-		</box>
+			<text fg={theme.colors.text}>No active processes</text>
+		</scrollbox>
 	);
+
+	// Calculate toast offset based on layout elements above the main content
+	const calculateToastOffset = useCallback(() => {
+		let offset = 1; // Base offset
+		if (hasShuttingDown) {
+			offset += 1; // Shutdown warning bar
+		}
+		if (!useVertical && horizontalTabPosition === "top") {
+			offset += 2; // Horizontal tab bar at top
+		}
+		return offset;
+	}, [hasShuttingDown, useVertical, horizontalTabPosition]);
 
 	return (
 		<box
@@ -443,26 +533,34 @@ export function App({
 			)}
 			{useVertical ? (
 				// Vertical layout: sidebar on left or right
-				<box flexDirection="row" flexGrow={1} width="100%" gap={1}>
+				<box
+					key="layout-vertical"
+					flexDirection="row"
+					flexGrow={1}
+					width="100%"
+					gap={1}
+				>
 					{sidebarPosition === "left" && tabBarComponent}
 					{logViewerComponent}
 					{sidebarPosition === "right" && tabBarComponent}
 				</box>
 			) : (
 				// Horizontal layout: tabs on top or bottom
-				<box flexDirection="column" flexGrow={1} width="100%">
+				<box
+					key="layout-horizontal"
+					flexDirection="column"
+					flexGrow={1}
+					flexShrink={1}
+					flexBasis={0}
+					width="100%"
+				>
 					{horizontalTabPosition === "top" && tabBarComponent}
 					{logViewerComponent}
 					{horizontalTabPosition === "bottom" && tabBarComponent}
 				</box>
 			)}
-			<HelpBar
-				theme={theme}
-				mode={getHelpBarMode()}
-				isVerticalLayout={useVertical}
-				width={terminalWidth}
-			/>
-			<ToastContainer theme={theme} />
+			<HelpBar theme={theme} mode={getHelpBarMode()} width={terminalWidth} />
+			<ToastContainer theme={theme} topOffset={calculateToastOffset()} />
 			<CommandPalette
 				theme={theme}
 				isOpen={commandPaletteOpen}

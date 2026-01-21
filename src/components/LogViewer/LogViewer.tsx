@@ -1,4 +1,5 @@
 import {
+	MacOSScrollAccel,
 	type ScrollBoxRenderable,
 	type Selection,
 	TextAttributes,
@@ -8,21 +9,32 @@ import {
 	useRenderer,
 	useTerminalDimensions,
 } from "@opentui/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { copyToClipboard } from "../../lib/clipboard";
 import type { Theme } from "../../lib/theme";
 import type { ToolState } from "../../types";
 import { TextInput } from "../TextInput";
 import { toast } from "../Toast";
+import { lineHeightCacheStore } from "./LineHeightCacheStore";
 import {
 	calculateContentWidth,
 	calculateHighlightSegments,
 	calculateScrollInfo,
+	calculateVisibleRange,
 	findMatchingLines,
 	getLineNumberWidth,
 	LINE_NUMBER_WIDTH_THRESHOLD,
+	shouldVirtualize,
 	truncateLine,
+	type VisibleRange,
 } from "./log-viewer-utils";
+import { useScrollInfo } from "./useScrollInfo";
 
 interface LogViewerProps {
 	tool: ToolState;
@@ -41,11 +53,6 @@ interface LogViewerProps {
 	lineWrap?: boolean;
 	/** Width of sidebar (when in vertical layout mode), used for truncation calculation */
 	sidebarWidth?: number;
-}
-
-interface ScrollInfo {
-	linesAbove: number;
-	linesBelow: number;
 }
 
 // Highlight search matches in a line by splitting into segments
@@ -75,7 +82,7 @@ function highlightMatches(
 	});
 }
 
-export function LogViewer({
+export const LogViewer = React.memo(function LogViewer({
 	tool,
 	theme,
 	searchMode,
@@ -94,9 +101,18 @@ export function LogViewer({
 	const scrollboxRef = useRef<ScrollBoxRenderable>(null);
 	const renderer = useRenderer();
 	const { width: terminalWidth } = useTerminalDimensions();
-	const [scrollInfo, setScrollInfo] = useState<ScrollInfo>({
-		linesAbove: 0,
-		linesBelow: 0,
+
+	// Use the scroll info hook - only re-renders when scroll data actually changes
+	const scrollData = useScrollInfo(scrollboxRef, 100);
+
+	// Virtualization: track visible range with ref for hysteresis
+	// Using ref instead of state to avoid render loops from spacer height changes
+	const visibleRangeRef = useRef<{
+		range: VisibleRange;
+		cacheContentWidth: number; // Track which cache width the range was calculated for
+	}>({
+		range: { start: 0, end: 50, topSpacerHeight: 0, bottomSpacerHeight: 0 },
+		cacheContentWidth: 0,
 	});
 
 	// Flash state for copy feedback
@@ -106,6 +122,9 @@ export function LogViewer({
 	const lastClickRef = useRef<{ lineIndex: number; time: number } | null>(null);
 	const isDoubleClickRef = useRef(false);
 	const DOUBLE_CLICK_THRESHOLD = 400; // ms
+
+	// macOS-style scroll acceleration for smooth scrolling
+	const scrollAcceleration = useMemo(() => new MacOSScrollAccel(), []);
 
 	// Determine if line numbers should be shown
 	const shouldShowLineNumbers =
@@ -142,23 +161,122 @@ export function LogViewer({
 		lineNumberWidth,
 	});
 
-	// Update scroll info based on current scroll position
-	const updateScrollInfo = useCallback(() => {
-		const scrollbox = scrollboxRef.current;
-		if (!scrollbox) return;
+	// Determine if virtualization is enabled for this render
+	const virtualizationEnabled = shouldVirtualize(totalLines);
 
-		const info = calculateScrollInfo({
-			scrollTop: scrollbox.scrollTop,
-			viewportHeight: scrollbox.viewport.height,
-			contentHeight: scrollbox.scrollHeight,
+	// Initialize the shared cache store's measurer (only on first render)
+	const measurerInitialized = useRef(false);
+	if (!measurerInitialized.current) {
+		lineHeightCacheStore.initializeMeasurer(renderer.widthMethod, contentWidth);
+		measurerInitialized.current = true;
+	}
+
+	// Update wrap width when content width changes
+	useEffect(() => {
+		lineHeightCacheStore.setWrapWidth(contentWidth);
+	}, [contentWidth]);
+
+	// Get or build line height cache from the shared store
+	// This persists across tab switches, so we don't rebuild from scratch each time
+	const lineHeightCache = useMemo(() => {
+		return lineHeightCacheStore.getOrBuildCache(
+			tool.config.name,
+			logLines,
+			contentWidth,
+			lineWrap,
+		);
+	}, [tool.config.name, logLines, contentWidth, lineWrap]);
+
+	// Compute scroll info (linesAbove/linesBelow) directly from scrollData
+	const scrollInfo = useMemo(
+		() =>
+			calculateScrollInfo({
+				scrollTop: scrollData.scrollTop,
+				viewportHeight: scrollData.viewportHeight,
+				contentHeight: scrollData.contentHeight,
+				totalLines,
+			}),
+		[scrollData, totalLines],
+	);
+
+	// Compute visible range synchronously during render (no state, no effect)
+	// Uses ref for hysteresis to prevent recalculating when viewport is within rendered range
+	const visibleRange = useMemo(() => {
+		const { scrollTop, viewportHeight, contentHeight } = scrollData;
+		const lastRangeData = visibleRangeRef.current;
+		const lastRange = lastRangeData.range;
+		const firstVisibleLine = Math.floor(scrollTop);
+		const lastVisibleLine = Math.ceil(scrollTop + viewportHeight);
+
+		// Force recalculation if cache content width changed (e.g., terminal resize)
+		const cacheWidthChanged =
+			lineHeightCache &&
+			lastRangeData.cacheContentWidth !== lineHeightCache.contentWidth;
+
+		// STABILIZER: When at/near bottom, use a fixed calculation to prevent oscillation
+		// At the bottom, render last (viewportHeight + overscan) lines with no bottom spacer
+		const maxScroll = Math.max(0, contentHeight - viewportHeight);
+		const isNearBottom = scrollTop >= maxScroll - 5; // Within 5 rows of bottom
+
+		if (isNearBottom && totalLines > 0) {
+			const overscan = 50;
+			const start = Math.max(0, totalLines - viewportHeight - overscan);
+			const end = totalLines;
+
+			// Calculate topSpacerHeight using the cache (row count, not line count)
+			// This ensures correct spacer height when lines wrap to multiple rows
+			let topSpacerHeight = start;
+			if (
+				lineHeightCache &&
+				lineHeightCache.cumulativeRows.length >= start &&
+				start > 0
+			) {
+				topSpacerHeight = lineHeightCache.cumulativeRows[start - 1] ?? start;
+			}
+
+			const stableRange: VisibleRange = {
+				start,
+				end,
+				topSpacerHeight,
+				bottomSpacerHeight: 0, // No bottom spacer when at bottom - prevents oscillation
+			};
+			visibleRangeRef.current = {
+				range: stableRange,
+				cacheContentWidth: lineHeightCache?.contentWidth ?? 0,
+			};
+			return stableRange;
+		}
+
+		// Buffer: recalculate when viewport gets within 150 lines of rendered edge
+		// Large buffer ensures spacer changes are rare, preventing oscillation
+		// Must be less than OVERSCAN_COUNT (200) to ensure content is ready before needed
+		const HYSTERESIS_BUFFER = 150;
+		const needsRecalculation =
+			cacheWidthChanged || // Cache changed (resize)
+			lastRange.end === 0 || // Initial state
+			firstVisibleLine < lastRange.start + HYSTERESIS_BUFFER ||
+			lastVisibleLine > lastRange.end - HYSTERESIS_BUFFER;
+
+		if (!needsRecalculation) {
+			return lastRange;
+		}
+
+		// Recalculate and update ref for next render's hysteresis check
+		const range = calculateVisibleRange({
+			scrollTop,
+			viewportHeight,
 			totalLines,
+			cache: lineHeightCache,
 		});
-
-		setScrollInfo(info);
-	}, [totalLines]);
+		visibleRangeRef.current = {
+			range,
+			cacheContentWidth: lineHeightCache?.contentWidth ?? 0,
+		};
+		return range;
+	}, [scrollData, totalLines, lineHeightCache]);
 
 	// Scroll to bottom when switching tabs (tool changes)
-	// biome-ignore lint/correctness/useExhaustiveDependencies: only trigger on tool name change
+	// biome-ignore lint/correctness/useExhaustiveDependencies: intentionally depends on tool.config.name to scroll on tab switch
 	useEffect(() => {
 		// Use setTimeout to ensure the scrollbox has rendered with new content
 		const timeout = setTimeout(() => {
@@ -169,18 +287,6 @@ export function LogViewer({
 		}, 0);
 		return () => clearTimeout(timeout);
 	}, [tool.config.name]);
-
-	// Update scroll info when logs change
-	// biome-ignore lint/correctness/useExhaustiveDependencies: totalLines triggers update when new logs arrive
-	useEffect(() => {
-		updateScrollInfo();
-	}, [updateScrollInfo, totalLines]);
-
-	// Set up an interval to check scroll position periodically
-	useEffect(() => {
-		const interval = setInterval(updateScrollInfo, 100);
-		return () => clearInterval(interval);
-	}, [updateScrollInfo]);
 
 	// Scroll to a specific line
 	const scrollToLine = useCallback((lineIndex: number) => {
@@ -193,6 +299,7 @@ export function LogViewer({
 				lineIndex - Math.floor(viewportHeight / 2),
 			);
 			scrollbox.scrollTo(targetScroll);
+			// The useScrollInfo hook will detect the position change within 100ms
 		}
 	}, []);
 
@@ -234,6 +341,7 @@ export function LogViewer({
 						scrollTarget - Math.floor(viewportHeight / 2),
 					);
 					scrollbox.scrollTo(targetScroll);
+					// The useScrollInfo hook will detect the position change within 100ms
 				}
 				// Flash the line (using original index for the flash state)
 				setFlashingLine(lineIndex);
@@ -360,7 +468,7 @@ export function LogViewer({
 	}, [renderer, copyText]);
 
 	return (
-		<box flexGrow={1} height="100%" flexDirection="column">
+		<box flexGrow={1} flexDirection="column">
 			{/* Search bar */}
 			{(searchMode || searchQuery) && (
 				<box
@@ -438,10 +546,10 @@ export function LogViewer({
 			<scrollbox
 				ref={scrollboxRef}
 				flexGrow={1}
-				height="100%"
 				backgroundColor={colors.surface0}
 				stickyScroll
 				stickyStart="bottom"
+				scrollAcceleration={scrollAcceleration}
 				scrollbarOptions={{
 					paddingLeft: 1,
 				}}
@@ -472,7 +580,36 @@ export function LogViewer({
 										line,
 									}));
 
-						return displayItems.map(({ originalIndex, line }) => {
+						const displayCount = displayItems.length;
+
+						// Calculate visible range for the display items (may differ from logLines when filtering)
+						// IMPORTANT: Use the precise spacer heights from visibleRange (calculated with line height cache)
+						const effectiveRange = virtualizationEnabled
+							? {
+									start: Math.min(visibleRange.start, displayCount),
+									end: Math.min(visibleRange.end, displayCount),
+									topSpacerHeight: visibleRange.topSpacerHeight,
+									bottomSpacerHeight: visibleRange.bottomSpacerHeight,
+								}
+							: {
+									start: 0,
+									end: displayCount,
+									topSpacerHeight: 0,
+									bottomSpacerHeight: 0,
+								};
+
+						// Get the slice of items to render
+						const visibleItems = displayItems.slice(
+							effectiveRange.start,
+							effectiveRange.end,
+						);
+
+						// Render a single log line
+						const renderLogLine = (
+							originalIndex: number,
+							line: string,
+							displayIndex: number,
+						) => {
 							const isFlashing = flashingLine === originalIndex;
 							const isMatch =
 								searchQuery && matchingLines.includes(originalIndex);
@@ -514,7 +651,7 @@ export function LogViewer({
 
 							return (
 								<box
-									key={`log-${tool.config.name}-${originalIndex}`}
+									key={`log-${tool.config.name}-${displayIndex}`}
 									flexDirection="row"
 									backgroundColor={colors.surface0}
 									onMouseDown={() => handleMouseDown(originalIndex)}
@@ -545,7 +682,38 @@ export function LogViewer({
 									</box>
 								</box>
 							);
-						});
+						};
+
+						return (
+							<>
+								{/* Top spacer - maintains scroll position for virtualized content */}
+								{effectiveRange.topSpacerHeight > 0 && (
+									<box
+										key="virtualization-top-spacer"
+										height={effectiveRange.topSpacerHeight}
+										backgroundColor={colors.surface0}
+									/>
+								)}
+
+								{/* Visible lines only */}
+								{visibleItems.map(({ originalIndex, line }, idx) =>
+									renderLogLine(
+										originalIndex,
+										line,
+										effectiveRange.start + idx,
+									),
+								)}
+
+								{/* Bottom spacer - maintains total scroll height */}
+								{effectiveRange.bottomSpacerHeight > 0 && (
+									<box
+										key="virtualization-bottom-spacer"
+										height={effectiveRange.bottomSpacerHeight}
+										backgroundColor={colors.surface0}
+									/>
+								)}
+							</>
+						);
 					})()
 				)}
 			</scrollbox>
@@ -569,4 +737,4 @@ export function LogViewer({
 			)}
 		</box>
 	);
-}
+});

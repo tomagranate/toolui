@@ -46,6 +46,25 @@ export function TabBar({
 	// Check if we need scrolling (not all tabs fit)
 	const needsScrolling = !canFitAllTabs(tools, width, showTabNumbers);
 
+	// Clamp scroll offset when tabs are removed (e.g., during shutdown)
+	useEffect(() => {
+		if (tools.length === 0) {
+			setScrollOffset(0);
+			return;
+		}
+		// Calculate the maximum valid offset (shows last tab at rightmost position)
+		const maxOffset = calculateMinOffsetForTab(
+			tools,
+			tools.length - 1,
+			width,
+			showTabNumbers,
+		);
+		// If scroll offset is beyond the valid range, clamp it
+		if (scrollOffset > maxOffset) {
+			setScrollOffset(maxOffset);
+		}
+	}, [tools, width, showTabNumbers, scrollOffset]);
+
 	// Calculate if we have tabs before/after the visible range
 	const hasMoreLeft = scrollOffset > 0;
 
@@ -221,7 +240,6 @@ export function TabBar({
 			<scrollbox
 				width={20}
 				height="100%"
-				flexDirection="column"
 				padding={1}
 				backgroundColor={colors.surface1}
 			>
