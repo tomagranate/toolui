@@ -187,16 +187,55 @@ export const LogViewer = React.memo(function LogViewer({
 		);
 	}, [tool.config.name, logLines, contentWidth, lineWrap]);
 
+	// Calculate the effective display count (filtered or full)
+	// Needed early for scrollInfo and visibleRange calculations
+	const displayCount =
+		filterMode && searchQuery ? matchingLines.length : totalLines;
+
+	// Whether we're in active filter mode (showing filtered results)
+	const isFiltering = filterMode && searchQuery && matchingLines.length > 0;
+
+	// Build a derived line height cache for filtered results
+	// Maps filtered indices to cumulative row heights by looking up each matching line's height
+	const filteredLineHeightCache = useMemo(() => {
+		if (!isFiltering || !lineHeightCache) return null;
+
+		const cumulativeRows: number[] = [];
+		let totalRows = 0;
+
+		for (const originalIndex of matchingLines) {
+			// Get the height of this line from the original cache
+			// Height = cumulativeRows[i] - cumulativeRows[i-1] (or cumulativeRows[0] for first line)
+			const lineHeight =
+				originalIndex === 0
+					? (lineHeightCache.cumulativeRows[0] ?? 1)
+					: (lineHeightCache.cumulativeRows[originalIndex] ??
+							originalIndex + 1) -
+						(lineHeightCache.cumulativeRows[originalIndex - 1] ??
+							originalIndex);
+
+			totalRows += lineHeight;
+			cumulativeRows.push(totalRows);
+		}
+
+		return {
+			cumulativeRows,
+			contentWidth: lineHeightCache.contentWidth,
+			lineWrap: lineHeightCache.lineWrap,
+		};
+	}, [isFiltering, lineHeightCache, matchingLines]);
+
 	// Compute scroll info (linesAbove/linesBelow) directly from scrollData
+	// Use displayCount when filtering to show correct "X more" counts
 	const scrollInfo = useMemo(
 		() =>
 			calculateScrollInfo({
 				scrollTop: scrollData.scrollTop,
 				viewportHeight: scrollData.viewportHeight,
 				contentHeight: scrollData.contentHeight,
-				totalLines,
+				totalLines: displayCount,
 			}),
-		[scrollData, totalLines],
+		[scrollData, displayCount],
 	);
 
 	// Compute visible range synchronously during render (no state, no effect)
@@ -208,30 +247,39 @@ export const LogViewer = React.memo(function LogViewer({
 		const firstVisibleLine = Math.floor(scrollTop);
 		const lastVisibleLine = Math.ceil(scrollTop + viewportHeight);
 
+		// Use displayCount for calculations - this respects filtering
+		const effectiveLineCount = displayCount;
+
+		// Use the appropriate cache: filtered cache when filtering, otherwise the full cache
+		const effectiveCache = isFiltering
+			? filteredLineHeightCache
+			: lineHeightCache;
+
 		// Force recalculation if cache content width changed (e.g., terminal resize)
 		const cacheWidthChanged =
-			lineHeightCache &&
-			lastRangeData.cacheContentWidth !== lineHeightCache.contentWidth;
+			effectiveCache &&
+			lastRangeData.cacheContentWidth !== effectiveCache.contentWidth;
 
 		// STABILIZER: When at/near bottom, use a fixed calculation to prevent oscillation
 		// At the bottom, render last (viewportHeight + overscan) lines with no bottom spacer
 		const maxScroll = Math.max(0, contentHeight - viewportHeight);
 		const isNearBottom = scrollTop >= maxScroll - 5; // Within 5 rows of bottom
 
-		if (isNearBottom && totalLines > 0) {
+		if (isNearBottom && effectiveLineCount > 0) {
 			const overscan = 50;
-			const start = Math.max(0, totalLines - viewportHeight - overscan);
-			const end = totalLines;
+			const start = Math.max(0, effectiveLineCount - viewportHeight - overscan);
+			const end = effectiveLineCount;
 
 			// Calculate topSpacerHeight using the cache (row count, not line count)
 			// This ensures correct spacer height when lines wrap to multiple rows
+			// Only use cache when not filtering
 			let topSpacerHeight = start;
 			if (
-				lineHeightCache &&
-				lineHeightCache.cumulativeRows.length >= start &&
+				effectiveCache &&
+				effectiveCache.cumulativeRows.length >= start &&
 				start > 0
 			) {
-				topSpacerHeight = lineHeightCache.cumulativeRows[start - 1] ?? start;
+				topSpacerHeight = effectiveCache.cumulativeRows[start - 1] ?? start;
 			}
 
 			const stableRange: VisibleRange = {
@@ -242,7 +290,7 @@ export const LogViewer = React.memo(function LogViewer({
 			};
 			visibleRangeRef.current = {
 				range: stableRange,
-				cacheContentWidth: lineHeightCache?.contentWidth ?? 0,
+				cacheContentWidth: effectiveCache?.contentWidth ?? 0,
 			};
 			return stableRange;
 		}
@@ -265,15 +313,21 @@ export const LogViewer = React.memo(function LogViewer({
 		const range = calculateVisibleRange({
 			scrollTop,
 			viewportHeight,
-			totalLines,
-			cache: lineHeightCache,
+			totalLines: effectiveLineCount,
+			cache: effectiveCache,
 		});
 		visibleRangeRef.current = {
 			range,
-			cacheContentWidth: lineHeightCache?.contentWidth ?? 0,
+			cacheContentWidth: effectiveCache?.contentWidth ?? 0,
 		};
 		return range;
-	}, [scrollData, totalLines, lineHeightCache]);
+	}, [
+		scrollData,
+		displayCount,
+		isFiltering,
+		lineHeightCache,
+		filteredLineHeightCache,
+	]);
 
 	// Scroll to bottom when switching tabs (tool changes)
 	// biome-ignore lint/correctness/useExhaustiveDependencies: intentionally depends on tool.config.name to scroll on tab switch
@@ -287,6 +341,21 @@ export const LogViewer = React.memo(function LogViewer({
 		}, 0);
 		return () => clearTimeout(timeout);
 	}, [tool.config.name]);
+
+	// Clamp scroll position when entering filter mode while scrolled beyond filtered results
+	// Only applies when actively filtering - don't interfere with normal scrolling
+	useEffect(() => {
+		if (!isFiltering) return;
+
+		const scrollbox = scrollboxRef.current;
+		if (!scrollbox || displayCount === 0) return;
+
+		// If current scroll position is beyond the filtered content, scroll to top
+		const currentScroll = scrollbox.scrollTop;
+		if (currentScroll > displayCount) {
+			scrollbox.scrollTo(0);
+		}
+	}, [isFiltering, displayCount]);
 
 	// Scroll to a specific line
 	const scrollToLine = useCallback((lineIndex: number) => {
@@ -331,24 +400,43 @@ export const LogViewer = React.memo(function LogViewer({
 				const scrollbox = scrollboxRef.current;
 				if (scrollbox) {
 					// Calculate the scroll target based on whether filter mode is on
-					// In filter mode, we scroll to the match index (display index)
-					// In normal mode, we scroll to the original line index
-					const scrollTarget = filterMode && searchQuery ? index : lineIndex;
+					// In filter mode, use the filtered cache with match index
+					// In normal mode, use the full cache with original line index
+					const isFilterActive = filterMode && searchQuery;
+					const cache = isFilterActive
+						? filteredLineHeightCache
+						: lineHeightCache;
+					const targetIndex = isFilterActive ? index : lineIndex;
+
+					// Get the row position from cache (cumulative rows up to target line)
+					// This accounts for wrapped lines taking multiple rows
+					let targetRow = targetIndex;
+					if (cache && targetIndex > 0) {
+						targetRow = cache.cumulativeRows[targetIndex - 1] ?? targetIndex;
+					} else if (cache && targetIndex === 0) {
+						targetRow = 0;
+					}
 
 					const viewportHeight = scrollbox.viewport.height;
 					const targetScroll = Math.max(
 						0,
-						scrollTarget - Math.floor(viewportHeight / 2),
+						targetRow - Math.floor(viewportHeight / 2),
 					);
 					scrollbox.scrollTo(targetScroll);
-					// The useScrollInfo hook will detect the position change within 100ms
 				}
 				// Flash the line (using original index for the flash state)
 				setFlashingLine(lineIndex);
 				setTimeout(() => setFlashingLine(null), 150);
 			}
 		},
-		[matchingLines, onCurrentMatchIndexChange, filterMode, searchQuery],
+		[
+			matchingLines,
+			onCurrentMatchIndexChange,
+			filterMode,
+			searchQuery,
+			lineHeightCache,
+			filteredLineHeightCache,
+		],
 	);
 
 	// Handle keyboard input
@@ -422,7 +510,7 @@ export const LogViewer = React.memo(function LogViewer({
 		[logLines, copyText],
 	);
 
-	// Handle mouse down for double-click detection
+	// Handle mouse down for double-click detection and setting active match
 	const handleMouseDown = useCallback(
 		(lineIndex: number) => {
 			const now = Date.now();
@@ -439,9 +527,18 @@ export const LogViewer = React.memo(function LogViewer({
 			} else {
 				lastClickRef.current = { lineIndex, time: now };
 				isDoubleClickRef.current = false;
+
+				// If searching, set clicked line as the active match (for next/prev navigation)
+				if (searchQuery && matchingLines.length > 0) {
+					// Find the match index for this line
+					const matchIndex = matchingLines.indexOf(lineIndex);
+					if (matchIndex !== -1) {
+						onCurrentMatchIndexChange(matchIndex);
+					}
+				}
 			}
 		},
-		[handleDoubleClick],
+		[handleDoubleClick, searchQuery, matchingLines, onCurrentMatchIndexChange],
 	);
 
 	// Listen for OpenTUI selection events to copy to clipboard
@@ -583,7 +680,7 @@ export const LogViewer = React.memo(function LogViewer({
 						const displayCount = displayItems.length;
 
 						// Calculate visible range for the display items (may differ from logLines when filtering)
-						// IMPORTANT: Use the precise spacer heights from visibleRange (calculated with line height cache)
+						// When filtering, we use a derived cache built from matching lines' heights
 						const effectiveRange = virtualizationEnabled
 							? {
 									start: Math.min(visibleRange.start, displayCount),
