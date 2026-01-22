@@ -197,10 +197,10 @@ export function TabBar({
 
 	const getTabBackgroundColor = (index: number) => {
 		if (index === activeIndex) {
-			return colors.activeTabBackground;
+			return colors.accent;
 		}
 		if (index === hoveredIndex) {
-			return colors.activeTabBackground; // Use same as active for hover
+			return colors.accent; // Use same as active for hover
 		}
 		// Vertical sidebar uses surface1, horizontal uses surface0
 		return vertical ? colors.surface1 : colors.surface0;
@@ -221,17 +221,17 @@ export function TabBar({
 
 	const getTabTextColor = (tool: ToolState, index: number) => {
 		if (index === activeIndex) {
-			return colors.activeTabText;
+			return colors.accentForeground;
 		}
 		switch (tool.status) {
 			case "error":
-				return colors.statusError;
+				return colors.error;
 			case "shuttingDown":
-				return colors.statusShuttingDown;
+				return colors.warning;
 			case "running":
-				return colors.statusRunning;
+				return colors.success;
 			default:
-				return colors.inactiveTabText;
+				return colors.text;
 		}
 	};
 
@@ -240,14 +240,15 @@ export function TabBar({
 			<scrollbox
 				width={20}
 				height="100%"
-				padding={1}
+				paddingTop={1}
+				paddingBottom={1}
 				backgroundColor={colors.surface1}
 			>
 				{tools.map((tool, index) => (
 					<box
 						key={`${tool.config.name}-${index}`}
-						paddingLeft={1}
-						paddingRight={1}
+						paddingLeft={2}
+						paddingRight={2}
 						paddingTop={0}
 						paddingBottom={0}
 						backgroundColor={getTabBackgroundColor(index)}
@@ -279,7 +280,7 @@ export function TabBar({
 			backgroundColor={colors.surface0}
 			border
 			borderStyle="single"
-			borderColor={colors.lineNumberText}
+			borderColor={colors.textMuted}
 			onMouseScroll={(event) => {
 				if (event.scroll) {
 					handleScroll(event.scroll.direction);
@@ -304,8 +305,8 @@ export function TabBar({
 						fg={
 							hasMoreLeft
 								? hoveredIndex === -1
-									? colors.activeTabText
-									: colors.inactiveTabText
+									? colors.accentForeground
+									: colors.text
 								: colors.surface0
 						}
 					>
@@ -371,8 +372,8 @@ export function TabBar({
 						fg={
 							hasMoreRight
 								? hoveredIndex === -2
-									? colors.activeTabText
-									: colors.inactiveTabText
+									? colors.accentForeground
+									: colors.text
 								: colors.surface0
 						}
 					>

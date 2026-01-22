@@ -122,6 +122,8 @@ export function HelpBar({ theme, mode, width }: HelpBarProps) {
 		<box
 			height={1}
 			width="100%"
+			flexGrow={0}
+			flexShrink={0}
 			backgroundColor={colors.surface1}
 			justifyContent="center"
 			alignItems="center"

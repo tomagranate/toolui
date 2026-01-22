@@ -574,7 +574,7 @@ export const LogViewer = React.memo(function LogViewer({
 					backgroundColor={colors.surface1}
 					border
 					borderStyle="single"
-					borderColor={colors.lineNumberText}
+					borderColor={colors.textMuted}
 					paddingLeft={1}
 					paddingRight={1}
 					flexDirection="row"
@@ -597,11 +597,11 @@ export const LogViewer = React.memo(function LogViewer({
 							theme={theme}
 							prefix="/"
 							prefixBold
-							prefixColor={colors.searchSlash}
+							prefixColor={colors.accent}
 						/>
 					) : (
 						<>
-							<text attributes={TextAttributes.BOLD} fg={colors.searchSlash}>
+							<text attributes={TextAttributes.BOLD} fg={colors.accent}>
 								/
 							</text>
 							<text fg={colors.text} flexGrow={1}>
@@ -609,7 +609,7 @@ export const LogViewer = React.memo(function LogViewer({
 							</text>
 						</>
 					)}
-					<text fg={colors.lineNumberText}>
+					<text fg={colors.textMuted}>
 						{matchingLines.length > 0 && !searchMode && (
 							<span>
 								{" "}
@@ -617,7 +617,7 @@ export const LogViewer = React.memo(function LogViewer({
 							</span>
 						)}
 						{searchQuery && matchingLines.length === 0 && (
-							<span fg={colors.statusError}> (no matches)</span>
+							<span fg={colors.error}> (no matches)</span>
 						)}
 						<span> [Filter: {filterMode ? "ON" : "OFF"}]</span>
 					</text>
@@ -634,9 +634,7 @@ export const LogViewer = React.memo(function LogViewer({
 					backgroundColor={colors.surface0}
 					onMouseUp={scrollToTop}
 				>
-					<text fg={colors.inactiveTabText}>
-						↑ {scrollInfo.linesAbove} more ↑
-					</text>
+					<text fg={colors.textMuted}>↑ {scrollInfo.linesAbove} more ↑</text>
 				</box>
 			)}
 
@@ -723,7 +721,7 @@ export const LogViewer = React.memo(function LogViewer({
 								// If flashing (double-click copy feedback), highlight entire line
 								if (isFlashing) {
 									return (
-										<span bg={colors.selectedLineBackground} fg={colors.text}>
+										<span bg={colors.selectionBackground} fg={colors.text}>
 											{displayLine}
 										</span>
 									);
@@ -734,7 +732,7 @@ export const LogViewer = React.memo(function LogViewer({
 									return highlightMatches(
 										displayLine,
 										searchQuery,
-										colors.searchMatchText,
+										colors.warning,
 										colors.text,
 									);
 								}
@@ -761,9 +759,9 @@ export const LogViewer = React.memo(function LogViewer({
 											backgroundColor={colors.surface0}
 											border={["right"]}
 											borderStyle="single"
-											borderColor={colors.lineNumberText}
+											borderColor={colors.textMuted}
 										>
-											<text fg={colors.lineNumberText}>{lineNumber}</text>
+											<text fg={colors.textMuted}>{lineNumber}</text>
 										</box>
 									)}
 									{/* Log content - flexible column with OpenTUI selection */}
@@ -771,7 +769,7 @@ export const LogViewer = React.memo(function LogViewer({
 										<text
 											fg={colors.text}
 											selectable
-											selectionBg={colors.selectedLineBackground}
+											selectionBg={colors.selectionBackground}
 											selectionFg={colors.text}
 										>
 											{renderLineContent()}
@@ -825,9 +823,7 @@ export const LogViewer = React.memo(function LogViewer({
 					backgroundColor={colors.surface0}
 					onMouseUp={scrollToBottom}
 				>
-					<text fg={colors.inactiveTabText}>
-						↓ {scrollInfo.linesBelow} more ↓
-					</text>
+					<text fg={colors.textMuted}>↓ {scrollInfo.linesBelow} more ↓</text>
 				</box>
 			) : (
 				<box height={1} width="100%" backgroundColor={colors.surface0} />

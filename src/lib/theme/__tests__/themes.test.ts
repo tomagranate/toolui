@@ -6,32 +6,32 @@ describe("getTheme", () => {
 	test("returns default theme when called without argument", () => {
 		const theme = getTheme();
 		expect(theme.name).toBe("Default");
-		expect(theme.colors.background).toBe("black");
-		expect(theme.colors.text).toBe("white");
-		expect(theme.colors.statusRunning).toBe("green");
-		expect(theme.colors.statusError).toBe("red");
+		expect(theme.colors.surface0).toBe("#000000");
+		expect(theme.colors.text).toBe("#ffffff");
+		expect(theme.colors.success).toBe("#00ff00");
+		expect(theme.colors.error).toBe("#ff0000");
 	});
 
 	test("returns default theme when called with 'default'", () => {
 		const theme = getTheme("default");
 		expect(theme.name).toBe("Default");
-		expect(theme.colors.background).toBe("black");
+		expect(theme.colors.surface0).toBe("#000000");
 	});
 
 	test("returns correct theme when called with valid theme name", () => {
 		const dracula = getTheme("dracula");
 		expect(dracula.name).toBe("Dracula");
-		expect(dracula.colors.background).toBe("#282a36");
+		expect(dracula.colors.surface0).toBe("#282a36");
 
 		const nord = getTheme("nord");
 		expect(nord.name).toBe("Nord");
-		expect(nord.colors.background).toBe("#2e3440");
+		expect(nord.colors.surface0).toBe("#2e3440");
 	});
 
 	test("falls back to default theme for invalid theme name", () => {
 		const theme = getTheme("invalid-theme-name");
 		expect(theme.name).toBe("Default");
-		expect(theme.colors.background).toBe("black");
+		expect(theme.colors.surface0).toBe("#000000");
 	});
 
 	test("all themes have all required color properties", () => {
@@ -43,17 +43,19 @@ describe("getTheme", () => {
 			// Verify all required properties exist and are non-empty strings
 			expect(typeof theme.name).toBe("string");
 			expect(theme.name.length).toBeGreaterThan(0);
-			expect(typeof theme.colors.background).toBe("string");
+			expect(typeof theme.colors.surface0).toBe("string");
+			expect(typeof theme.colors.surface1).toBe("string");
+			expect(typeof theme.colors.surface2).toBe("string");
 			expect(typeof theme.colors.text).toBe("string");
-			expect(typeof theme.colors.activeTabBackground).toBe("string");
-			expect(typeof theme.colors.activeTabText).toBe("string");
-			expect(typeof theme.colors.inactiveTabText).toBe("string");
-			expect(typeof theme.colors.statusRunning).toBe("string");
-			expect(typeof theme.colors.statusShuttingDown).toBe("string");
-			expect(typeof theme.colors.statusError).toBe("string");
-			expect(typeof theme.colors.statusStopped).toBe("string");
-			expect(typeof theme.colors.warningBackground).toBe("string");
-			expect(typeof theme.colors.warningText).toBe("string");
+			expect(typeof theme.colors.textDim).toBe("string");
+			expect(typeof theme.colors.textMuted).toBe("string");
+			expect(typeof theme.colors.accent).toBe("string");
+			expect(typeof theme.colors.success).toBe("string");
+			expect(typeof theme.colors.warning).toBe("string");
+			expect(typeof theme.colors.error).toBe("string");
+			expect(typeof theme.colors.accentForeground).toBe("string");
+			expect(typeof theme.colors.warningForeground).toBe("string");
+			expect(typeof theme.colors.selectionBackground).toBe("string");
 		}
 	});
 });
@@ -117,14 +119,12 @@ describe("buildTerminalTheme", () => {
 		const theme = buildTerminalTheme(colors);
 
 		expect(theme.name).toBe("Terminal");
-		expect(theme.colors.background).toBe("#282a36");
+		expect(theme.colors.surface0).toBe("#282a36");
 		expect(theme.colors.text).toBe("#f8f8f2");
-		expect(theme.colors.statusRunning).toBe("#50fa7b");
-		expect(theme.colors.statusError).toBe("#ff5555");
-		expect(theme.colors.statusShuttingDown).toBe("#f1fa8c");
-		expect(theme.colors.warningBackground).toBe("#f1fa8c");
-		expect(theme.colors.activeTabBackground).toBe("#bd93f9");
-		expect(theme.colors.inactiveTabText).toBe("#f8f8f2");
+		expect(theme.colors.success).toBe("#50fa7b");
+		expect(theme.colors.error).toBe("#ff5555");
+		expect(theme.colors.warning).toBe("#f1fa8c");
+		expect(theme.colors.accent).toBe("#bd93f9");
 	});
 
 	test("uses fallback colors when palette is empty", () => {
@@ -136,13 +136,13 @@ describe("buildTerminalTheme", () => {
 
 		const theme = buildTerminalTheme(colors);
 
-		expect(theme.colors.background).toBe("#000000");
+		expect(theme.colors.surface0).toBe("#000000");
 		expect(theme.colors.text).toBe("#ffffff");
 		// Fallback palette colors
-		expect(theme.colors.statusRunning).toBe("#00ff00");
-		expect(theme.colors.statusError).toBe("#ff0000");
-		expect(theme.colors.statusShuttingDown).toBe("#ffff00");
-		expect(theme.colors.activeTabBackground).toBe("#0000ff");
+		expect(theme.colors.success).toBe("#00ff00");
+		expect(theme.colors.error).toBe("#ff0000");
+		expect(theme.colors.warning).toBe("#ffff00");
+		expect(theme.colors.accent).toBe("#0000ff");
 	});
 
 	test("uses default colors when foreground/background are undefined", () => {
@@ -152,11 +152,11 @@ describe("buildTerminalTheme", () => {
 
 		const theme = buildTerminalTheme(colors);
 
-		expect(theme.colors.background).toBe("#000000");
+		expect(theme.colors.surface0).toBe("#000000");
 		expect(theme.colors.text).toBe("#ffffff");
 	});
 
-	test("generates contrasting text colors for active tab", () => {
+	test("generates contrasting text colors for accent", () => {
 		// Dark blue background should get light text
 		const darkColors: TerminalColors = {
 			foreground: "#ffffff",
@@ -175,7 +175,7 @@ describe("buildTerminalTheme", () => {
 		};
 
 		const darkTheme = buildTerminalTheme(darkColors);
-		expect(darkTheme.colors.activeTabText).toBe("#ffffff");
+		expect(darkTheme.colors.accentForeground).toBe("#ffffff");
 
 		// Light/bright background should get dark text
 		const lightColors: TerminalColors = {
@@ -195,7 +195,7 @@ describe("buildTerminalTheme", () => {
 		};
 
 		const lightTheme = buildTerminalTheme(lightColors);
-		expect(lightTheme.colors.activeTabText).toBe("#000000");
+		expect(lightTheme.colors.accentForeground).toBe("#000000");
 	});
 
 	test("generates contrasting warning text for yellow backgrounds", () => {
@@ -217,10 +217,10 @@ describe("buildTerminalTheme", () => {
 
 		const theme = buildTerminalTheme(colors);
 		// Yellow has high luminance, should get dark text
-		expect(theme.colors.warningText).toBe("#000000");
+		expect(theme.colors.warningForeground).toBe("#000000");
 	});
 
-	test("dims foreground color for stopped status", () => {
+	test("dims foreground color for muted text", () => {
 		const colors: TerminalColors = {
 			foreground: "#ffffff",
 			background: "#000000",
@@ -229,10 +229,10 @@ describe("buildTerminalTheme", () => {
 
 		const theme = buildTerminalTheme(colors);
 
-		// Stopped color should be dimmer than the original foreground
-		expect(theme.colors.statusStopped).not.toBe("#ffffff");
+		// Muted text should be dimmer than the original foreground
+		expect(theme.colors.textMuted).not.toBe("#ffffff");
 		// Should be a hex color
-		expect(theme.colors.statusStopped).toMatch(/^#[0-9a-f]{6}$/);
+		expect(theme.colors.textMuted).toMatch(/^#[0-9a-f]{6}$/);
 	});
 
 	test("builds theme matching Catppuccin Mocha style", () => {
@@ -254,11 +254,11 @@ describe("buildTerminalTheme", () => {
 
 		const theme = buildTerminalTheme(colors);
 
-		expect(theme.colors.background).toBe("#1e1e2e");
+		expect(theme.colors.surface0).toBe("#1e1e2e");
 		expect(theme.colors.text).toBe("#cdd6f4");
-		expect(theme.colors.statusRunning).toBe("#a6e3a1");
-		expect(theme.colors.statusError).toBe("#f38ba8");
-		expect(theme.colors.activeTabBackground).toBe("#89b4fa");
+		expect(theme.colors.success).toBe("#a6e3a1");
+		expect(theme.colors.error).toBe("#f38ba8");
+		expect(theme.colors.accent).toBe("#89b4fa");
 	});
 
 	test("handles partial palette gracefully", () => {
@@ -281,9 +281,9 @@ describe("buildTerminalTheme", () => {
 		const theme = buildTerminalTheme(colors);
 
 		// Should use defined green
-		expect(theme.colors.statusRunning).toBe("#00ff00");
+		expect(theme.colors.success).toBe("#00ff00");
 		// Should use fallbacks for undefined
-		expect(theme.colors.statusError).toBe("#ff0000");
-		expect(theme.colors.activeTabBackground).toBe("#0000ff");
+		expect(theme.colors.error).toBe("#ff0000");
+		expect(theme.colors.accent).toBe("#0000ff");
 	});
 });

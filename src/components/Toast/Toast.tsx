@@ -33,11 +33,11 @@ function ToastItem({ toast: t, theme, onDismiss }: ToastItemProps) {
 	const getBorderColor = () => {
 		switch (t.type) {
 			case "success":
-				return colors.toastBorderSuccess;
+				return colors.success;
 			case "error":
-				return colors.toastBorderError;
+				return colors.error;
 			default:
-				return colors.toastBorderInfo;
+				return colors.accent;
 		}
 	};
 

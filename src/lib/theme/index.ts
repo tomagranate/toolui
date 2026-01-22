@@ -3,6 +3,7 @@ export {
 	ghosttyConfigToTerminalColors,
 	readGhosttyConfig,
 } from "./ghostty-config";
+export { ThemeProvider, useTheme } from "./ThemeContext";
 export type { TerminalColors } from "./terminal-colors";
 export {
 	parseOscColorResponse,

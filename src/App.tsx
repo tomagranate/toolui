@@ -11,12 +11,13 @@ import {
 	LINE_NUMBER_WIDTH_THRESHOLD,
 } from "./components/LogViewer/log-viewer-utils";
 import { TabBar } from "./components/TabBar";
+import { ThemePicker } from "./components/ThemePicker";
 import { ToastContainer, toast } from "./components/Toast";
 import { StatusIcons } from "./constants";
 import { useToolsList } from "./hooks";
 import type { Config } from "./lib/config";
 import type { ProcessManager } from "./lib/processes";
-import type { Theme } from "./lib/theme";
+import { useTheme } from "./lib/theme";
 import type { ToolState } from "./types";
 
 /** Per-tab search state */
@@ -39,7 +40,10 @@ interface AppProps {
 	initialTools: ToolState[];
 	renderer: CliRenderer;
 	config: Config;
-	theme: Theme;
+	/** Initial line wrap setting from preferences */
+	initialLineWrap?: boolean;
+	/** Callback when line wrap changes (to save preference) */
+	onLineWrapChange?: (lineWrap: boolean) => void;
 }
 
 const DEFAULT_WIDTH_THRESHOLD = 100;
@@ -49,8 +53,12 @@ export function App({
 	initialTools,
 	renderer,
 	config,
-	theme,
+	initialLineWrap = true,
+	onLineWrapChange,
 }: AppProps) {
+	// Get theme from context
+	const { theme } = useTheme();
+
 	// Use hook that only re-renders when tool status/logs actually change
 	const tools = useToolsList(processManager, 100);
 	const [activeIndex, setActiveIndex] = useState(0);
@@ -60,7 +68,8 @@ export function App({
 	>(new Map());
 	const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 	const [shortcutsOpen, setShortcutsOpen] = useState(false);
-	const [lineWrap, setLineWrap] = useState(true); // Line wrapping enabled by default
+	const [themePickerOpen, setThemePickerOpen] = useState(false);
+	const [lineWrap, setLineWrap] = useState(initialLineWrap);
 	const { width: terminalWidth } = useTerminalDimensions();
 
 	// Get search state for a specific tab (returns default if not set)
@@ -136,14 +145,10 @@ export function App({
 
 			// Detect transition from "running" to "stopped" or "error"
 			if (prevStatus === "running" && currentStatus !== "running") {
-				const exitToastDuration = 5000;
 				if (currentStatus === "stopped") {
-					toast.info(`${toolName} exited`, exitToastDuration);
+					toast.info(`${toolName} exited`);
 				} else if (currentStatus === "error") {
-					toast.error(
-						`${toolName} exited with error (code ${tool.exitCode})`,
-						exitToastDuration,
-					);
+					toast.error(`${toolName} exited with error (code ${tool.exitCode})`);
 				}
 			}
 
@@ -198,8 +203,12 @@ export function App({
 
 	// Toggle line wrap function (used by both keyboard and command palette)
 	const toggleLineWrap = useCallback(() => {
-		setLineWrap((prev) => !prev);
-	}, []);
+		setLineWrap((prev) => {
+			const newValue = !prev;
+			onLineWrapChange?.(newValue);
+			return newValue;
+		});
+	}, [onLineWrapChange]);
 
 	// Toggle debug console (OpenTUI built-in console)
 	const toggleConsole = useCallback(() => {
@@ -254,7 +263,16 @@ export function App({
 			},
 		];
 
+		// Add theme switching command (opens theme picker modal)
+		commands.push({
+			id: "switch-theme",
+			label: "Switch theme",
+			category: "Appearance",
+			action: () => setThemePickerOpen(true),
+		});
+
 		// Add tab switching commands for all tabs (shortcuts only for first 9)
+		// These go last so they appear at the bottom of the palette
 		for (let i = 0; i < tools.length; i++) {
 			const tool = tools[i];
 			if (tool) {
@@ -318,6 +336,11 @@ export function App({
 				return;
 			}
 
+			// Priority 4: Close theme picker if open (handled by picker itself)
+			if (themePickerOpen) {
+				return; // ThemePicker handles its own Ctrl+C
+			}
+
 			// Priority 4: Exit the program
 			await processManager.cleanup();
 			renderer.stop();
@@ -327,7 +350,7 @@ export function App({
 		}
 
 		// Skip most key handling when modals are open (they handle their own input)
-		if (commandPaletteOpen || shortcutsOpen) {
+		if (commandPaletteOpen || shortcutsOpen || themePickerOpen) {
 			return;
 		}
 
@@ -491,7 +514,7 @@ export function App({
 			height="100%"
 			padding={1}
 			flexDirection="column"
-			backgroundColor={theme.colors.background}
+			backgroundColor={theme.colors.surface0}
 		>
 			<text fg={theme.colors.text}>No active processes</text>
 		</scrollbox>
@@ -512,19 +535,21 @@ export function App({
 	return (
 		<box
 			flexDirection="column"
-			flexGrow={1}
 			width="100%"
 			height="100%"
-			backgroundColor={theme.colors.background}
+			backgroundColor={theme.colors.surface0}
 		>
 			{hasShuttingDown && (
 				<box
 					height={1}
 					paddingLeft={1}
 					paddingRight={1}
-					backgroundColor={theme.colors.warningBackground}
+					backgroundColor={theme.colors.warning}
 				>
-					<text attributes={TextAttributes.BOLD} fg={theme.colors.warningText}>
+					<text
+						attributes={TextAttributes.BOLD}
+						fg={theme.colors.warningForeground}
+					>
 						{StatusIcons.WARNING} WARNING: {shuttingDownCount} process
 						{shuttingDownCount > 1 ? "es" : ""} shutting down gracefully. Please
 						wait... Ctrl+C to force quit.
@@ -537,6 +562,8 @@ export function App({
 					key="layout-vertical"
 					flexDirection="row"
 					flexGrow={1}
+					flexShrink={1}
+					flexBasis={0}
 					width="100%"
 					gap={1}
 				>
@@ -572,12 +599,17 @@ export function App({
 				onClose={() => setShortcutsOpen(false)}
 				showShortcuts
 			/>
+			<ThemePicker
+				isOpen={themePickerOpen}
+				onClose={() => setThemePickerOpen(false)}
+			/>
 		</box>
 	);
 
 	function getHelpBarMode(): HelpBarMode {
 		if (commandPaletteOpen) return "commandPalette";
 		if (shortcutsOpen) return "shortcuts";
+		if (themePickerOpen) return "commandPalette"; // Use same hints as command palette
 		if (currentSearchState.searchMode) return "search";
 		return "normal";
 	}

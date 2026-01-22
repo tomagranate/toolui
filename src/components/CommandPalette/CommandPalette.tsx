@@ -185,15 +185,15 @@ export function CommandPalette({
 				<box
 					paddingLeft={1}
 					paddingRight={1}
-					backgroundColor={colors.activeTabBackground}
+					backgroundColor={colors.accent}
 					flexDirection="row"
 					justifyContent="space-between"
 				>
-					<text attributes={TextAttributes.BOLD} fg={colors.activeTabText}>
+					<text attributes={TextAttributes.BOLD} fg={colors.accentForeground}>
 						{title}
 					</text>
 					<text
-						fg={colors.lineNumberText}
+						fg={colors.textMuted}
 						attributes={TextAttributes.BOLD}
 						{...({
 							onMouseDown: onClose,
@@ -213,7 +213,7 @@ export function CommandPalette({
 						<box
 							border
 							borderStyle="single"
-							borderColor={colors.lineNumberText}
+							borderColor={colors.textMuted}
 							paddingLeft={1}
 							paddingRight={1}
 						>
@@ -226,7 +226,7 @@ export function CommandPalette({
 								theme={theme}
 								prefix="> "
 								prefixBold
-								prefixColor={colors.activeTabBackground}
+								prefixColor={colors.accent}
 							/>
 						</box>
 					</box>
@@ -240,7 +240,7 @@ export function CommandPalette({
 				>
 					{displayItems.length === 0 ? (
 						<box paddingLeft={1} paddingRight={1}>
-							<text fg={colors.inactiveTabText}>No matching commands</text>
+							<text fg={colors.text}>No matching commands</text>
 						</box>
 					) : (
 						displayItems.map((item, index) => {
@@ -255,13 +255,10 @@ export function CommandPalette({
 										isSelected ? colors.surface1 : colors.surface2
 									}
 								>
-									<text fg={isSelected ? colors.text : colors.inactiveTabText}>
+									<text fg={colors.text}>
 										{item.label}
 										{item.shortcut && (
-											<span fg={colors.inactiveTabText}>
-												{" "}
-												({item.shortcut})
-											</span>
+											<span fg={colors.textDim}> ({item.shortcut})</span>
 										)}
 									</text>
 								</box>

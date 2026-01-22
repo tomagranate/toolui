@@ -100,7 +100,7 @@ export function TextInput({
 				backgroundColor={colors.surface0}
 				focusedTextColor={colors.text}
 				focusedBackgroundColor={colors.surface0}
-				cursorColor={colors.activeTabBackground}
+				cursorColor={colors.accent}
 				flexGrow={1}
 			/>
 		</box>

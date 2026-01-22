@@ -10,224 +10,164 @@ import {
 export interface Theme {
 	name: string;
 	colors: {
-		background: string;
-		text: string;
-		activeTabBackground: string;
-		activeTabText: string;
-		inactiveTabText: string;
-		statusRunning: string;
-		statusShuttingDown: string;
-		statusError: string;
-		statusStopped: string;
-		warningBackground: string;
-		warningText: string;
-		// Log viewer colors
-		lineNumberText: string;
-		selectedLineBackground: string;
-		searchMatchBackground: string;
-		searchMatchText: string;
-		searchSlash: string;
 		// Surface hierarchy (darker to lighter in dark mode)
 		surface0: string; // Base - LogViewer content area
-		surface1: string; // Elevated - TabBar, HelpBar
+		surface1: string; // Elevated - TabBar, HelpBar, gutter
 		surface2: string; // Overlay - Modals, Toasts, Search bar
-		// Toast border colors
-		toastBorderSuccess: string;
-		toastBorderError: string;
-		toastBorderInfo: string;
+
+		// Text
+		text: string; // Primary text color
+		textDim: string; // Secondary readable text (shortcuts, hints)
+		textMuted: string; // Tertiary text (line numbers, borders)
+
+		// Semantic colors (used for text, icons, borders, AND backgrounds)
+		accent: string; // Brand/primary - active tabs, cursor, highlights
+		success: string; // Positive - running processes, success feedback
+		warning: string; // Caution - shutting down, warnings, search matches
+		error: string; // Negative - errors, failures
+
+		// Foreground pairs (text ON semantic backgrounds)
+		accentForeground: string; // Text ON accent background
+		warningForeground: string; // Text ON warning background
+
+		// Selection
+		selectionBackground: string; // Selected/highlighted lines
 	};
 }
 
 const DEFAULT_THEME: Theme = {
 	name: "Default",
 	colors: {
-		background: "#000000",
-		text: "white",
-		activeTabBackground: "#333333",
-		activeTabText: "white",
-		inactiveTabText: "white",
-		statusRunning: "green",
-		statusShuttingDown: "yellow",
-		statusError: "red",
-		statusStopped: "white",
-		warningBackground: "yellow",
-		warningText: "black",
-		lineNumberText: "#666666",
-		selectedLineBackground: "#333333",
-		searchMatchBackground: "#444400",
-		searchMatchText: "#ffff00",
-		searchSlash: "#ffff00",
 		surface0: "#000000",
 		surface1: "#1a1a1a",
 		surface2: "#2a2a2a",
-		toastBorderSuccess: "#00ff00",
-		toastBorderError: "#ff0000",
-		toastBorderInfo: "#333333",
+		text: "#ffffff",
+		textDim: "#aaaaaa",
+		textMuted: "#666666",
+		accent: "#333333",
+		success: "#00ff00",
+		warning: "#ffff00",
+		error: "#ff0000",
+		accentForeground: "#ffffff",
+		warningForeground: "#000000",
+		selectionBackground: "#333333",
 	},
 };
 
 export const themes: Record<string, Theme> = {
+	terminal: {
+		name: "Terminal (auto)",
+		// Placeholder colors - actual terminal theme is detected at runtime
+		// and passed to ThemeProvider. This entry exists so it appears in the picker.
+		colors: DEFAULT_THEME.colors,
+	},
 	default: DEFAULT_THEME,
 	dracula: {
 		name: "Dracula",
 		colors: {
-			background: "#282a36",
-			text: "#f8f8f2",
-			activeTabBackground: "#bd93f9",
-			activeTabText: "#282a36",
-			inactiveTabText: "#f8f8f2",
-			statusRunning: "#50fa7b",
-			statusShuttingDown: "#f1fa8c",
-			statusError: "#ff5555",
-			statusStopped: "#6272a4",
-			warningBackground: "#f1fa8c",
-			warningText: "#282a36",
-			lineNumberText: "#6272a4",
-			selectedLineBackground: "#44475a",
-			searchMatchBackground: "#50fa7b33",
-			searchMatchText: "#50fa7b",
-			searchSlash: "#bd93f9",
 			surface0: "#282a36",
 			surface1: "#44475a",
 			surface2: "#6272a4",
-			toastBorderSuccess: "#50fa7b",
-			toastBorderError: "#ff5555",
-			toastBorderInfo: "#bd93f9",
+			text: "#f8f8f2",
+			textDim: "#bfbfca",
+			textMuted: "#6272a4",
+			accent: "#bd93f9",
+			success: "#50fa7b",
+			warning: "#f1fa8c",
+			error: "#ff5555",
+			accentForeground: "#282a36",
+			warningForeground: "#282a36",
+			selectionBackground: "#44475a",
 		},
 	},
 	nord: {
 		name: "Nord",
 		colors: {
-			background: "#2e3440",
-			text: "#eceff4",
-			activeTabBackground: "#5e81ac",
-			activeTabText: "#eceff4",
-			inactiveTabText: "#d8dee9",
-			statusRunning: "#a3be8c",
-			statusShuttingDown: "#ebcb8b",
-			statusError: "#bf616a",
-			statusStopped: "#4c566a",
-			warningBackground: "#ebcb8b",
-			warningText: "#2e3440",
-			lineNumberText: "#4c566a",
-			selectedLineBackground: "#3b4252",
-			searchMatchBackground: "#ebcb8b33",
-			searchMatchText: "#ebcb8b",
-			searchSlash: "#5e81ac",
 			surface0: "#2e3440",
 			surface1: "#3b4252",
 			surface2: "#434c5e",
-			toastBorderSuccess: "#a3be8c",
-			toastBorderError: "#bf616a",
-			toastBorderInfo: "#5e81ac",
+			text: "#eceff4",
+			textDim: "#d8dee9",
+			textMuted: "#4c566a",
+			accent: "#5e81ac",
+			success: "#a3be8c",
+			warning: "#ebcb8b",
+			error: "#bf616a",
+			accentForeground: "#eceff4",
+			warningForeground: "#2e3440",
+			selectionBackground: "#3b4252",
 		},
 	},
 	onedark: {
 		name: "One Dark",
 		colors: {
-			background: "#282c34",
-			text: "#abb2bf",
-			activeTabBackground: "#61afef",
-			activeTabText: "#282c34",
-			inactiveTabText: "#abb2bf",
-			statusRunning: "#98c379",
-			statusShuttingDown: "#e5c07b",
-			statusError: "#e06c75",
-			statusStopped: "#5c6370",
-			warningBackground: "#e5c07b",
-			warningText: "#282c34",
-			lineNumberText: "#5c6370",
-			selectedLineBackground: "#3e4451",
-			searchMatchBackground: "#e5c07b33",
-			searchMatchText: "#e5c07b",
-			searchSlash: "#61afef",
 			surface0: "#282c34",
 			surface1: "#3e4451",
 			surface2: "#4b5263",
-			toastBorderSuccess: "#98c379",
-			toastBorderError: "#e06c75",
-			toastBorderInfo: "#61afef",
+			text: "#abb2bf",
+			textDim: "#848b98",
+			textMuted: "#5c6370",
+			accent: "#61afef",
+			success: "#98c379",
+			warning: "#e5c07b",
+			error: "#e06c75",
+			accentForeground: "#282c34",
+			warningForeground: "#282c34",
+			selectionBackground: "#3e4451",
 		},
 	},
 	solarized: {
 		name: "Solarized Dark",
 		colors: {
-			background: "#002b36",
-			text: "#839496",
-			activeTabBackground: "#268bd2",
-			activeTabText: "#fdf6e3",
-			inactiveTabText: "#93a1a1",
-			statusRunning: "#859900",
-			statusShuttingDown: "#b58900",
-			statusError: "#dc322f",
-			statusStopped: "#586e75",
-			warningBackground: "#b58900",
-			warningText: "#002b36",
-			lineNumberText: "#586e75",
-			selectedLineBackground: "#073642",
-			searchMatchBackground: "#b5890033",
-			searchMatchText: "#b58900",
-			searchSlash: "#268bd2",
 			surface0: "#002b36",
 			surface1: "#073642",
 			surface2: "#586e75",
-			toastBorderSuccess: "#859900",
-			toastBorderError: "#dc322f",
-			toastBorderInfo: "#268bd2",
+			text: "#839496",
+			textDim: "#93a1a1",
+			textMuted: "#586e75",
+			accent: "#268bd2",
+			success: "#859900",
+			warning: "#b58900",
+			error: "#dc322f",
+			accentForeground: "#fdf6e3",
+			warningForeground: "#002b36",
+			selectionBackground: "#073642",
 		},
 	},
 	gruvbox: {
 		name: "Gruvbox",
 		colors: {
-			background: "#282828",
-			text: "#ebdbb2",
-			activeTabBackground: "#fe8019",
-			activeTabText: "#282828",
-			inactiveTabText: "#ebdbb2",
-			statusRunning: "#b8bb26",
-			statusShuttingDown: "#fabd2f",
-			statusError: "#fb4934",
-			statusStopped: "#928374",
-			warningBackground: "#fabd2f",
-			warningText: "#282828",
-			lineNumberText: "#928374",
-			selectedLineBackground: "#3c3836",
-			searchMatchBackground: "#fabd2f33",
-			searchMatchText: "#fabd2f",
-			searchSlash: "#fe8019",
 			surface0: "#282828",
 			surface1: "#3c3836",
 			surface2: "#504945",
-			toastBorderSuccess: "#b8bb26",
-			toastBorderError: "#fb4934",
-			toastBorderInfo: "#fe8019",
+			text: "#ebdbb2",
+			textDim: "#bdae93",
+			textMuted: "#928374",
+			accent: "#fe8019",
+			success: "#b8bb26",
+			warning: "#fabd2f",
+			error: "#fb4934",
+			accentForeground: "#282828",
+			warningForeground: "#282828",
+			selectionBackground: "#3c3836",
 		},
 	},
 	catppuccin: {
 		name: "Catppuccin Mocha",
 		colors: {
-			background: "#1e1e2e",
-			text: "#cdd6f4",
-			activeTabBackground: "#cba6f7",
-			activeTabText: "#1e1e2e",
-			inactiveTabText: "#bac2de",
-			statusRunning: "#a6e3a1",
-			statusShuttingDown: "#f9e2af",
-			statusError: "#f38ba8",
-			statusStopped: "#6c7086",
-			warningBackground: "#f9e2af",
-			warningText: "#1e1e2e",
-			lineNumberText: "#6c7086",
-			selectedLineBackground: "#313244",
-			searchMatchBackground: "#f9e2af33",
-			searchMatchText: "#f9e2af",
-			searchSlash: "#cba6f7",
 			surface0: "#1e1e2e",
 			surface1: "#313244",
 			surface2: "#45475a",
-			toastBorderSuccess: "#a6e3a1",
-			toastBorderError: "#f38ba8",
-			toastBorderInfo: "#89b4fa",
+			text: "#cdd6f4",
+			textDim: "#a6adc8",
+			textMuted: "#6c7086",
+			accent: "#cba6f7",
+			success: "#a6e3a1",
+			warning: "#f9e2af",
+			error: "#f38ba8",
+			accentForeground: "#1e1e2e",
+			warningForeground: "#1e1e2e",
+			selectionBackground: "#313244",
 		},
 	},
 };
@@ -367,22 +307,20 @@ export function buildTerminalTheme(colors: TerminalColors): Theme {
 	const paletteYellow = colors.palette[3] ?? "#ffff00";
 	const paletteBlue = colors.palette[4] ?? "#0000ff";
 
-	// Use blue for active tab background - it's more consistent across themes
+	// Use blue for accent - it's more consistent across themes
 	// (magenta/slot 5 varies wildly: purple, orange, pink, etc.)
-	const activeTabBackground = paletteBlue;
+	const accent = paletteBlue;
 
 	// Derive contrasting text colors
-	const activeTabText = getContrastingTextColor(activeTabBackground);
-	const warningText = getContrastingTextColor(paletteYellow);
+	const accentForeground = getContrastingTextColor(accent);
+	const warningForeground = getContrastingTextColor(paletteYellow);
 
-	// Create a dimmed version of foreground for stopped status
-	const statusStopped = dimColor(foreground, 0.4);
-
-	// Create a dimmed version of foreground for line numbers
-	const lineNumberText = dimColor(foreground, 0.5);
+	// Create dimmed versions of foreground for secondary text
+	const textDim = dimColor(foreground, 0.25); // 75% brightness
+	const textMuted = dimColor(foreground, 0.5); // 50% brightness
 
 	// Create a slightly lighter background for selection
-	const selectedLineBackground = lightenColor(background, 0.15);
+	const selectionBackground = lightenColor(background, 0.15);
 
 	// Derive surface colors (progressively lighter in dark mode)
 	const surface0 = background;
@@ -392,28 +330,19 @@ export function buildTerminalTheme(colors: TerminalColors): Theme {
 	return {
 		name: "Terminal",
 		colors: {
-			background,
-			text: foreground,
-			activeTabBackground,
-			activeTabText,
-			inactiveTabText: foreground,
-			statusRunning: paletteGreen,
-			statusShuttingDown: paletteYellow,
-			statusError: paletteRed,
-			statusStopped,
-			warningBackground: paletteYellow,
-			warningText,
-			lineNumberText,
-			selectedLineBackground,
-			searchMatchBackground: `${paletteYellow}33`,
-			searchMatchText: paletteYellow,
-			searchSlash: paletteBlue,
 			surface0,
 			surface1,
 			surface2,
-			toastBorderSuccess: paletteGreen,
-			toastBorderError: paletteRed,
-			toastBorderInfo: paletteBlue,
+			text: foreground,
+			textDim,
+			textMuted,
+			accent,
+			success: paletteGreen,
+			warning: paletteYellow,
+			error: paletteRed,
+			accentForeground,
+			warningForeground,
+			selectionBackground,
 		},
 	};
 }
