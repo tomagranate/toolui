@@ -1,12 +1,15 @@
 #!/usr/bin/env bun
 
 // Tests carriage return and line overwrite behavior
+// Alternates between spinner and progress bar phases with pauses in between
+
 const ESC = "\x1b[";
 const RESET = `${ESC}0m`;
 const CYAN = `${ESC}36m`;
 const GREEN = `${ESC}32m`;
 const YELLOW = `${ESC}33m`;
 const BLUE = `${ESC}34m`;
+const MAGENTA = `${ESC}35m`;
 const DIM = `${ESC}2m`;
 
 console.log(
@@ -19,7 +22,15 @@ console.log(
 const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 let spinnerIndex = 0;
 let progress = 0;
-let phase = "spinner"; // spinner, progress, complete
+let cycle = 0;
+let pauseCounter = 0;
+
+// Phases: spinner -> pause -> progress -> pause -> (repeat)
+let phase = "spinner";
+
+const SPINNER_DURATION = 40; // ~4 seconds at 100ms interval
+const PROGRESS_STEP = 3; // Progress increment per tick
+const PAUSE_DURATION = 30; // ~3 seconds pause
 
 const renderProgressBar = (pct) => {
 	const width = 30;
@@ -29,35 +40,61 @@ const renderProgressBar = (pct) => {
 	return `[${bar}]`;
 };
 
+const tasks = [
+	"Loading dependencies",
+	"Compiling TypeScript",
+	"Bundling modules",
+	"Optimizing assets",
+	"Running tests",
+];
+
 const interval = setInterval(() => {
+	const taskName = tasks[cycle % tasks.length];
+
 	if (phase === "spinner") {
 		const frame = spinnerFrames[spinnerIndex % spinnerFrames.length];
-		process.stdout.write(`\r${CYAN}${frame}${RESET} Loading dependencies...`);
+		process.stdout.write(`\r${CYAN}${frame}${RESET} ${taskName}...`);
 		spinnerIndex++;
-		if (spinnerIndex > 30) {
-			console.log(`\r${GREEN}✅ Dependencies loaded!${RESET}     `);
+
+		if (spinnerIndex >= SPINNER_DURATION) {
+			console.log(`\r${GREEN}✅${RESET} ${taskName} complete!     `);
+			phase = "pause-after-spinner";
+			pauseCounter = 0;
+		}
+	} else if (phase === "pause-after-spinner") {
+		pauseCounter++;
+		if (pauseCounter >= PAUSE_DURATION) {
+			console.log(
+				`\n${MAGENTA}[LOG]${RESET} Starting build phase ${cycle + 1}...`,
+			);
 			phase = "progress";
+			progress = 0;
 		}
 	} else if (phase === "progress") {
-		progress += Math.floor(Math.random() * 5) + 1;
+		progress += PROGRESS_STEP;
+
 		if (progress >= 100) {
 			progress = 100;
 			console.log(
-				`\r${renderProgressBar(100)} ${GREEN}100%${RESET} - Complete!`,
+				`\r${renderProgressBar(100)} ${GREEN}100%${RESET} - Build complete!`,
 			);
-			console.log(`\n${GREEN}[PROGRESS]${RESET} Build finished successfully`);
-			phase = "complete";
+			phase = "pause-after-progress";
+			pauseCounter = 0;
 		} else {
 			process.stdout.write(
-				`\r${renderProgressBar(progress)} ${YELLOW}${progress}%${RESET} - Building...`,
+				`\r${renderProgressBar(progress)} ${YELLOW}${progress.toString().padStart(3)}%${RESET} - Building...`,
 			);
 		}
-	} else {
-		// Complete - show occasional status updates
-		const timestamp = new Date().toISOString();
-		console.log(
-			`${DIM}[${timestamp}]${RESET} ${CYAN}Watching for changes...${RESET}`,
-		);
+	} else if (phase === "pause-after-progress") {
+		pauseCounter++;
+		if (pauseCounter >= PAUSE_DURATION) {
+			cycle++;
+			console.log(
+				`\n${BLUE}[INFO]${RESET} Cycle ${cycle} finished. Starting next cycle...\n`,
+			);
+			phase = "spinner";
+			spinnerIndex = 0;
+		}
 	}
 }, 100);
 

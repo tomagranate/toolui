@@ -384,4 +384,197 @@ describe("ProcessManager", () => {
 		// Should not throw
 		expect(() => processManager.clearLogs(999)).not.toThrow();
 	});
+
+	// =========================================================================
+	// Carriage Return Handling Tests
+	// =========================================================================
+
+	test("carriage return - progress bar updates replace previous line", async () => {
+		// Simulate a progress bar: \rProgress 10%\rProgress 50%\rProgress 100%\n
+		// Only the final state (Progress 100%) should be in logs
+		const configs: ToolConfig[] = [
+			{
+				name: "test",
+				command: "printf",
+				args: ["\\rProgress 10%%\\rProgress 50%%\\rProgress 100%%\\n"],
+			},
+		];
+
+		await processManager.initialize(configs);
+		await processManager.startTool(0);
+		await waitForProcessExit(processManager, 0);
+
+		const tool = processManager.getTool(0);
+		expect(tool?.logs).toBeDefined();
+
+		// Find the progress line (not the exit message)
+		const progressLogs = tool?.logs?.filter((log) =>
+			log.segments.some((seg) => seg.text.includes("Progress")),
+		);
+
+		// Should only have one line with the final progress state
+		expect(progressLogs?.length).toBe(1);
+		const progressText = progressLogs?.[0]?.segments
+			.map((s) => s.text)
+			.join("");
+		expect(progressText).toBe("Progress 100%");
+	});
+
+	test("carriage return - spinner updates replace previous line", async () => {
+		// Simulate spinner frames: \r- Loading\r/ Loading\r| Loading\r\ Loading\n
+		const configs: ToolConfig[] = [
+			{
+				name: "test",
+				command: "printf",
+				args: ["\\r- Loading\\r/ Loading\\r| Loading\\rDone!\\n"],
+			},
+		];
+
+		await processManager.initialize(configs);
+		await processManager.startTool(0);
+		await waitForProcessExit(processManager, 0);
+
+		const tool = processManager.getTool(0);
+
+		// Find lines that aren't the exit message
+		const contentLogs = tool?.logs?.filter(
+			(log) =>
+				!log.segments.some((seg) => seg.text.includes("[Process exited")),
+		);
+
+		// Should only have the final "Done!" line
+		expect(contentLogs?.length).toBe(1);
+		const finalText = contentLogs?.[0]?.segments.map((s) => s.text).join("");
+		expect(finalText).toBe("Done!");
+	});
+
+	test("carriage return - Windows line endings (CRLF) handled correctly", async () => {
+		// \r\n should be treated as a normal line break, not a replacement
+		const configs: ToolConfig[] = [
+			{
+				name: "test",
+				command: "printf",
+				args: ["Line 1\\r\\nLine 2\\r\\nLine 3\\r\\n"],
+			},
+		];
+
+		await processManager.initialize(configs);
+		await processManager.startTool(0);
+		await waitForProcessExit(processManager, 0);
+
+		const tool = processManager.getTool(0);
+
+		// Filter out exit message
+		const contentLogs = tool?.logs?.filter(
+			(log) =>
+				!log.segments.some((seg) => seg.text.includes("[Process exited")),
+		);
+
+		// Should have all three lines (not replaced)
+		expect(contentLogs?.length).toBe(3);
+		expect(contentLogs?.[0]?.segments.map((s) => s.text).join("")).toBe(
+			"Line 1",
+		);
+		expect(contentLogs?.[1]?.segments.map((s) => s.text).join("")).toBe(
+			"Line 2",
+		);
+		expect(contentLogs?.[2]?.segments.map((s) => s.text).join("")).toBe(
+			"Line 3",
+		);
+	});
+
+	test("carriage return - mixed content with normal lines and progress", async () => {
+		// Normal line, then progress updates, then another normal line
+		const configs: ToolConfig[] = [
+			{
+				name: "test",
+				command: "printf",
+				args: ["Starting...\\n\\rStep 1\\rStep 2\\rStep 3 done\\nFinished!\\n"],
+			},
+		];
+
+		await processManager.initialize(configs);
+		await processManager.startTool(0);
+		await waitForProcessExit(processManager, 0);
+
+		const tool = processManager.getTool(0);
+
+		// Filter out exit message
+		const contentLogs = tool?.logs?.filter(
+			(log) =>
+				!log.segments.some((seg) => seg.text.includes("[Process exited")),
+		);
+
+		// Should have: "Starting...", "Step 3 done", "Finished!"
+		expect(contentLogs?.length).toBe(3);
+		expect(contentLogs?.[0]?.segments.map((s) => s.text).join("")).toBe(
+			"Starting...",
+		);
+		expect(contentLogs?.[1]?.segments.map((s) => s.text).join("")).toBe(
+			"Step 3 done",
+		);
+		expect(contentLogs?.[2]?.segments.map((s) => s.text).join("")).toBe(
+			"Finished!",
+		);
+	});
+
+	test("carriage return - multiple CR in one chunk takes last segment", async () => {
+		// Multiple \r in a single line - should take content after last \r
+		const configs: ToolConfig[] = [
+			{
+				name: "test",
+				command: "printf",
+				args: ["foo\\rbar\\rbaz\\n"],
+			},
+		];
+
+		await processManager.initialize(configs);
+		await processManager.startTool(0);
+		await waitForProcessExit(processManager, 0);
+
+		const tool = processManager.getTool(0);
+
+		const contentLogs = tool?.logs?.filter(
+			(log) =>
+				!log.segments.some((seg) => seg.text.includes("[Process exited")),
+		);
+
+		// Should only have "baz" (content after last \r)
+		expect(contentLogs?.length).toBe(1);
+		expect(contentLogs?.[0]?.segments.map((s) => s.text).join("")).toBe("baz");
+	});
+
+	test("carriage return - no CR behaves normally", async () => {
+		// Lines without \r should work as before
+		const configs: ToolConfig[] = [
+			{
+				name: "test",
+				command: "printf",
+				args: ["Line 1\\nLine 2\\nLine 3\\n"],
+			},
+		];
+
+		await processManager.initialize(configs);
+		await processManager.startTool(0);
+		await waitForProcessExit(processManager, 0);
+
+		const tool = processManager.getTool(0);
+
+		const contentLogs = tool?.logs?.filter(
+			(log) =>
+				!log.segments.some((seg) => seg.text.includes("[Process exited")),
+		);
+
+		// Should have all three lines
+		expect(contentLogs?.length).toBe(3);
+		expect(contentLogs?.[0]?.segments.map((s) => s.text).join("")).toBe(
+			"Line 1",
+		);
+		expect(contentLogs?.[1]?.segments.map((s) => s.text).join("")).toBe(
+			"Line 2",
+		);
+		expect(contentLogs?.[2]?.segments.map((s) => s.text).join("")).toBe(
+			"Line 3",
+		);
+	});
 });

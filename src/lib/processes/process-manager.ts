@@ -63,8 +63,8 @@ export class ProcessManager {
 			if (proc.stdout) {
 				const reader =
 					proc.stdout.getReader() as ReadableStreamDefaultReader<Uint8Array>;
-				this.readStream(reader, (line) => {
-					this.addLog(index, line);
+				this.readStream(reader, (line, isReplacement) => {
+					this.addLog(index, line, false, isReplacement);
 				});
 			}
 
@@ -72,8 +72,8 @@ export class ProcessManager {
 			if (proc.stderr) {
 				const reader =
 					proc.stderr.getReader() as ReadableStreamDefaultReader<Uint8Array>;
-				this.readStream(reader, (line) => {
-					this.addLog(index, line, true);
+				this.readStream(reader, (line, isReplacement) => {
+					this.addLog(index, line, true, isReplacement);
 				});
 			}
 
@@ -103,12 +103,27 @@ export class ProcessManager {
 		}
 	}
 
+	/**
+	 * Read a stream and emit lines, handling carriage returns for progress bars.
+	 *
+	 * Carriage return (`\r`) behavior:
+	 * - `\r` within a complete line (ending with \n) means display content after last `\r`
+	 * - `\r\n` is treated as a normal line ending (Windows style)
+	 * - Incomplete lines with `\r` (real-time progress updates) trigger replacement
+	 *
+	 * Replacement logic:
+	 * - Complete lines are always NEW lines (isReplacement = false)
+	 * - Incomplete lines with `\r` are real-time updates (isReplacement = true)
+	 */
 	private async readStream(
 		reader: ReadableStreamDefaultReader<Uint8Array>,
-		onLine: (line: string) => void,
+		onLine: (line: string, isReplacement: boolean) => void,
 	): Promise<void> {
 		const decoder = new TextDecoder();
 		let buffer = "";
+		// Track if the last emitted line was an incomplete replacement
+		// so we know if we should continue replacing or start fresh
+		let lastWasIncompleteReplacement = false;
 
 		try {
 			while (true) {
@@ -116,30 +131,96 @@ export class ProcessManager {
 				if (done) break;
 
 				buffer += decoder.decode(value, { stream: true });
-				const lines = buffer.split("\n");
-				buffer = lines.pop() || "";
 
-				for (const line of lines) {
-					onLine(line);
+				// Process complete lines (ending with \n)
+				let newlineIdx = buffer.indexOf("\n");
+				while (newlineIdx !== -1) {
+					let line = buffer.slice(0, newlineIdx);
+					buffer = buffer.slice(newlineIdx + 1);
+
+					// Handle \r\n (Windows line ending) - strip trailing \r
+					if (line.endsWith("\r")) {
+						line = line.slice(0, -1);
+					}
+
+					// Handle \r within the line - take last segment after any \r
+					// This simulates terminal "carriage return" behavior where
+					// \r moves cursor to start of line, overwriting previous content
+					const crIdx = line.lastIndexOf("\r");
+					if (crIdx >= 0) {
+						line = line.slice(crIdx + 1);
+					}
+
+					// Complete lines are always emitted as NEW lines.
+					// However, if the previous emission was an incomplete replacement,
+					// this complete line should replace it (finalizing the progress bar).
+					const isReplacement = lastWasIncompleteReplacement;
+					lastWasIncompleteReplacement = false;
+
+					onLine(line, isReplacement);
+
+					// Check for more newlines in the remaining buffer
+					newlineIdx = buffer.indexOf("\n");
+				}
+
+				// Handle incomplete lines with \r (real-time progress bar updates)
+				// If buffer contains \r, the content after last \r is the "current" line
+				// Emit it as a replacement so it updates the display in real-time
+				const crIdx = buffer.lastIndexOf("\r");
+				if (crIdx >= 0) {
+					const currentLine = buffer.slice(crIdx + 1);
+					buffer = currentLine; // Keep only content after \r
+					if (currentLine.length > 0) {
+						onLine(currentLine, true); // Emit as replacement
+						lastWasIncompleteReplacement = true;
+					}
 				}
 			}
 
-			// Handle remaining buffer
+			// Handle remaining buffer when stream ends
 			if (buffer) {
-				onLine(buffer);
+				// Process any final \r in the remaining buffer
+				const crIdx = buffer.lastIndexOf("\r");
+				const finalLine = crIdx >= 0 ? buffer.slice(crIdx + 1) : buffer;
+				if (finalLine.length > 0) {
+					// If there's remaining content, it replaces the last incomplete line
+					onLine(finalLine, lastWasIncompleteReplacement);
+				}
 			}
 		} catch (_error) {
 			// Stream closed or error
 		}
 	}
 
-	private addLog(index: number, line: string, isStderr = false): void {
+	/**
+	 * Add a log line for a tool.
+	 *
+	 * @param index - Tool index
+	 * @param line - Log line text
+	 * @param isStderr - Whether this line came from stderr
+	 * @param isReplacement - If true, replace the last log line instead of appending
+	 *                        (used for progress bars and spinners that use \r)
+	 */
+	private addLog(
+		index: number,
+		line: string,
+		isStderr = false,
+		isReplacement = false,
+	): void {
 		const tool = this.tools[index];
 		if (!tool) return;
 
 		// Parse ANSI codes into segments
 		const segments = parseAnsiLine(line);
-		tool.logs.push({ segments, isStderr: isStderr || undefined });
+		const logEntry = { segments, isStderr: isStderr || undefined };
+
+		if (isReplacement && tool.logs.length > 0) {
+			// Replace the last log line instead of appending
+			// This handles progress bars and spinners that use \r to update in place
+			tool.logs[tool.logs.length - 1] = logEntry;
+		} else {
+			tool.logs.push(logEntry);
+		}
 
 		// Limit log size
 		if (tool.logs.length > this.maxLogLines) {
