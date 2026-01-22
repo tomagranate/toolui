@@ -190,8 +190,8 @@ export function App({
 			tools.map((tool) => ({
 				name: tool.config.name,
 				getLines: () =>
-					tool.logs.map((segments) =>
-						segments.map((segment) => segment.text).join(""),
+					tool.logs.map((logLine) =>
+						logLine.segments.map((segment) => segment.text).join(""),
 					),
 			})),
 		[tools],

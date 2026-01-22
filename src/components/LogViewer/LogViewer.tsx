@@ -132,25 +132,29 @@ export const LogViewer = React.memo(function LogViewer({
 		(showLineNumbers === "auto" &&
 			terminalWidth >= LINE_NUMBER_WIDTH_THRESHOLD);
 
-	// Convert logs to plain text (just concatenate segment text)
+	// Convert logs to plain text with stderr metadata
 	// Note: tool.logs.length is intentionally included to detect array mutations
 	// since the logs array reference stays the same when items are pushed
 	// biome-ignore lint/correctness/useExhaustiveDependencies: length detects array mutations
 	const logLines = useMemo(
 		() =>
-			tool.logs.map((segments) =>
-				segments.map((segment) => segment.text).join(""),
-			),
+			tool.logs.map((logLine) => ({
+				text: logLine.segments.map((segment) => segment.text).join(""),
+				isStderr: logLine.isStderr ?? false,
+			})),
 		[tool.logs, tool.logs.length],
 	);
 
 	const totalLines = logLines.length;
 	const lineNumberWidth = getLineNumberWidth(totalLines);
 
+	// Extract just the text for searching
+	const logTexts = useMemo(() => logLines.map((line) => line.text), [logLines]);
+
 	// Find matching lines for search
 	const matchingLines = useMemo(
-		() => findMatchingLines(logLines, searchQuery),
-		[logLines, searchQuery],
+		() => findMatchingLines(logTexts, searchQuery),
+		[logTexts, searchQuery],
 	);
 
 	// Calculate available width for line content (for truncation when lineWrap is off)
@@ -181,11 +185,11 @@ export const LogViewer = React.memo(function LogViewer({
 	const lineHeightCache = useMemo(() => {
 		return lineHeightCacheStore.getOrBuildCache(
 			tool.config.name,
-			logLines,
+			logTexts,
 			contentWidth,
 			lineWrap,
 		);
-	}, [tool.config.name, logLines, contentWidth, lineWrap]);
+	}, [tool.config.name, logTexts, contentWidth, lineWrap]);
 
 	// Calculate the effective display count (filtered or full)
 	// Needed early for scrollInfo and visibleRange calculations
@@ -499,9 +503,9 @@ export const LogViewer = React.memo(function LogViewer({
 	// Handle double-click to copy entire line
 	const handleDoubleClick = useCallback(
 		(lineIndex: number) => {
-			const fullLine = logLines[lineIndex];
-			if (fullLine !== undefined) {
-				copyText(fullLine);
+			const logLine = logLines[lineIndex];
+			if (logLine !== undefined) {
+				copyText(logLine.text);
 				setFlashingLine(lineIndex);
 				setTimeout(() => setFlashingLine(null), 150);
 				toast.success("Copied line to clipboard");
@@ -668,11 +672,13 @@ export const LogViewer = React.memo(function LogViewer({
 							filterMode && searchQuery
 								? matchingLines.map((originalIndex) => ({
 										originalIndex,
-										line: logLines[originalIndex] ?? "",
+										text: logLines[originalIndex]?.text ?? "",
+										isStderr: logLines[originalIndex]?.isStderr ?? false,
 									}))
-								: logLines.map((line, index) => ({
+								: logLines.map((logLine, index) => ({
 										originalIndex: index,
-										line,
+										text: logLine.text,
+										isStderr: logLine.isStderr,
 									}));
 
 						const displayCount = displayItems.length;
@@ -702,8 +708,9 @@ export const LogViewer = React.memo(function LogViewer({
 						// Render a single log line
 						const renderLogLine = (
 							originalIndex: number,
-							line: string,
+							text: string,
 							displayIndex: number,
+							isStderr: boolean,
 						) => {
 							const isFlashing = flashingLine === originalIndex;
 							const isMatch =
@@ -714,7 +721,7 @@ export const LogViewer = React.memo(function LogViewer({
 							);
 
 							// Get display line (truncated if lineWrap is off)
-							const displayLine = truncateLine(line, contentWidth, lineWrap);
+							const displayLine = truncateLine(text, contentWidth, lineWrap);
 
 							// Render line content with search match highlighting
 							const renderLineContent = () => {
@@ -742,7 +749,7 @@ export const LogViewer = React.memo(function LogViewer({
 							};
 
 							// Calculate gutter width for proper column sizing
-							const gutterColumnWidth = lineNumberWidth + 1; // line number + space before border
+							const gutterColumnWidth = lineNumberWidth + 1; // line number + border
 
 							return (
 								<box
@@ -751,7 +758,7 @@ export const LogViewer = React.memo(function LogViewer({
 									backgroundColor={colors.surface0}
 									onMouseDown={() => handleMouseDown(originalIndex)}
 								>
-									{/* Line number gutter - muted text with right border */}
+									{/* Line number gutter - muted text with right border, red for stderr */}
 									{shouldShowLineNumbers && (
 										<box
 											width={gutterColumnWidth}
@@ -761,7 +768,9 @@ export const LogViewer = React.memo(function LogViewer({
 											borderStyle="single"
 											borderColor={colors.textMuted}
 										>
-											<text fg={colors.textMuted}>{lineNumber}</text>
+											<text fg={isStderr ? colors.error : colors.textMuted}>
+												{lineNumber}
+											</text>
 										</box>
 									)}
 									{/* Log content - flexible column with OpenTUI selection */}
@@ -791,11 +800,12 @@ export const LogViewer = React.memo(function LogViewer({
 								)}
 
 								{/* Visible lines only */}
-								{visibleItems.map(({ originalIndex, line }, idx) =>
+								{visibleItems.map(({ originalIndex, text, isStderr }, idx) =>
 									renderLogLine(
 										originalIndex,
-										line,
+										text,
 										effectiveRange.start + idx,
+										isStderr,
 									),
 								)}
 

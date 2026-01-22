@@ -1,96 +1,163 @@
 [ui]
 sidebarPosition = "left"
 horizontalTabPosition = "top"
-widthThreshold = 100
-theme = "terminal"
 
+# === Baseline ===
 [[tools]]
-name = "continuous-logger"
+name = "steady-heartbeat"
 command = "bun"
-args = ["test-scripts/continuous-logger.js"]
+args = ["test-scripts/steady-heartbeat.js"]
 cwd = "."
-cleanup = ["echo 'Stopped continuous logger'"]
+cleanup = []
 
+# === Performance / Volume ===
 [[tools]]
-name = "web-server"
+name = "rapid-burst"
 command = "bun"
-args = ["test-scripts/web-server-sim.js"]
-cwd = "."
-cleanup = ["echo 'Web server cleanup complete'"]
-
-[[tools]]
-name = "database"
-command = "bun"
-args = ["test-scripts/database-sim.js"]
-cwd = "."
-cleanup = ["echo 'Database cleanup complete'"]
-
-[[tools]]
-name = "mixed-output"
-command = "bun"
-args = ["test-scripts/mixed-output.js"]
+args = ["test-scripts/rapid-burst.js"]
 cwd = "."
 cleanup = []
 
 [[tools]]
-name = "slow-start"
+name = "volume-5k"
 command = "bun"
-args = ["test-scripts/slow-start.js"]
+args = ["test-scripts/volume-5k.js"]
 cwd = "."
 cleanup = []
 
 [[tools]]
-name = "graceful-shutdown"
+name = "volume-20k"
 command = "bun"
-args = ["test-scripts/graceful-shutdown.js"]
+args = ["test-scripts/volume-20k.js"]
 cwd = "."
-cleanup = ["echo 'Graceful shutdown cleanup'"]
+cleanup = []
 
+# === Display / Rendering ===
 [[tools]]
-name = "work-then-cleanup"
+name = "long-lines"
 command = "bun"
-args = ["test-scripts/work-then-cleanup.js"]
-cwd = "."
-cleanup = ["echo 'Work process cleanup'"]
-
-[[tools]]
-name = "build-then-wait"
-command = "bun"
-args = ["test-scripts/build-then-wait.js"]
-cwd = "."
-cleanup = ["echo 'Build cleanup'"]
-
-[[tools]]
-name = "burst-then-stop"
-command = "bun"
-args = ["test-scripts/burst-then-stop.js"]
+args = ["test-scripts/long-lines.js"]
 cwd = "."
 cleanup = []
 
 [[tools]]
-name = "timed-exit"
+name = "unicode-emoji"
 command = "bun"
-args = ["test-scripts/timed-exit.js"]
+args = ["test-scripts/unicode-emoji.js"]
 cwd = "."
 cleanup = []
 
 [[tools]]
-name = "error-exit"
+name = "ansi-rainbow"
 command = "bun"
-args = ["test-scripts/error-exit.js"]
+args = ["test-scripts/ansi-rainbow.js"]
 cwd = "."
 cleanup = []
 
 [[tools]]
-name = "color-output"
+name = "progress-spinner"
 command = "bun"
-args = ["test-scripts/color-output.js"]
+args = ["test-scripts/progress-spinner.js"]
 cwd = "."
 cleanup = []
 
 [[tools]]
-name = "long-output"
+name = "json-logs"
 command = "bun"
-args = ["test-scripts/long-output.js"]
+args = ["test-scripts/json-logs.js"]
+cwd = "."
+cleanup = []
+
+[[tools]]
+name = "stack-traces"
+command = "bun"
+args = ["test-scripts/stack-traces.js"]
+cwd = "."
+cleanup = []
+
+[[tools]]
+name = "blank-lines"
+command = "bun"
+args = ["test-scripts/blank-lines.js"]
+cwd = "."
+cleanup = []
+
+[[tools]]
+name = "tab-whitespace"
+command = "bun"
+args = ["test-scripts/tab-whitespace.js"]
+cwd = "."
+cleanup = []
+
+# === Process Lifecycle ===
+[[tools]]
+name = "instant-success"
+command = "bun"
+args = ["test-scripts/instant-success.js"]
+cwd = "."
+cleanup = []
+
+[[tools]]
+name = "instant-crash"
+command = "bun"
+args = ["test-scripts/instant-crash.js"]
+cwd = "."
+cleanup = []
+
+[[tools]]
+name = "delayed-crash"
+command = "bun"
+args = ["test-scripts/delayed-crash.js"]
+cwd = "."
+cleanup = []
+
+[[tools]]
+name = "slow-shutdown"
+command = "bun"
+args = ["test-scripts/slow-shutdown.js"]
+cwd = "."
+cleanup = []
+
+[[tools]]
+name = "ignore-sigterm"
+command = "bun"
+args = ["test-scripts/ignore-sigterm.js"]
+cwd = "."
+cleanup = []
+
+[[tools]]
+name = "startup-delay"
+command = "bun"
+args = ["test-scripts/startup-delay.js"]
+cwd = "."
+cleanup = []
+
+[[tools]]
+name = "silent-runner"
+command = "bun"
+args = ["test-scripts/silent-runner.js"]
+cwd = "."
+cleanup = []
+
+# === Output Streams ===
+[[tools]]
+name = "stderr-only"
+command = "bun"
+args = ["test-scripts/stderr-only.js"]
+cwd = "."
+cleanup = []
+
+[[tools]]
+name = "interleaved-streams"
+command = "bun"
+args = ["test-scripts/interleaved-streams.js"]
+cwd = "."
+cleanup = []
+
+# === Search / Filter Testing ===
+[[tools]]
+name = "searchable-patterns"
+command = "bun"
+args = ["test-scripts/searchable-patterns.js"]
 cwd = "."
 cleanup = []

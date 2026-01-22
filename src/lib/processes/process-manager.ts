@@ -73,7 +73,7 @@ export class ProcessManager {
 				const reader =
 					proc.stderr.getReader() as ReadableStreamDefaultReader<Uint8Array>;
 				this.readStream(reader, (line) => {
-					this.addLog(index, `[stderr] ${line}`);
+					this.addLog(index, line, true);
 				});
 			}
 
@@ -133,13 +133,13 @@ export class ProcessManager {
 		}
 	}
 
-	private addLog(index: number, line: string): void {
+	private addLog(index: number, line: string, isStderr = false): void {
 		const tool = this.tools[index];
 		if (!tool) return;
 
 		// Parse ANSI codes into segments
 		const segments = parseAnsiLine(line);
-		tool.logs.push(segments);
+		tool.logs.push({ segments, isStderr: isStderr || undefined });
 
 		// Limit log size
 		if (tool.logs.length > this.maxLogLines) {

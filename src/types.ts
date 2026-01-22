@@ -13,10 +13,15 @@ export interface TextSegment {
 	attributes?: number; // TextAttributes flags (bold, dim, etc.)
 }
 
+export interface LogLine {
+	segments: TextSegment[];
+	isStderr?: boolean; // Whether this line came from stderr
+}
+
 export interface ToolState {
 	config: ToolConfig;
 	process: ReturnType<typeof Bun.spawn> | null;
-	logs: TextSegment[][]; // Array of lines, each line is array of segments
+	logs: LogLine[]; // Array of log lines with metadata
 	status: "running" | "stopped" | "error" | "shuttingDown";
 	exitCode: number | null;
 	pid?: number; // Process ID for persistence

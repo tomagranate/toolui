@@ -258,9 +258,9 @@ describe("ProcessManager", () => {
 
 		const tool = processManager.getTool(0);
 		expect(Array.isArray(tool?.logs)).toBe(true);
-		// Should have captured the echo output (logs is TextSegment[][])
-		const hasOutput = tool?.logs?.some((line) =>
-			line.some((segment) => segment.text.includes("test output")),
+		// Should have captured the echo output (logs is LogLine[])
+		const hasOutput = tool?.logs?.some((logLine) =>
+			logLine.segments.some((segment) => segment.text.includes("test output")),
 		);
 		expect(hasOutput).toBe(true);
 	});
