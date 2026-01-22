@@ -1,8 +1,16 @@
 #!/usr/bin/env bun
 
 // Outputs realistic stack traces for testing multi-line error patterns
-console.log("[STACK] Starting stack trace generator");
-console.log("[STACK] Simulating errors with full traces\n");
+const ESC = "\x1b[";
+const RESET = `${ESC}0m`;
+const RED = `${ESC}31m`;
+const YELLOW = `${ESC}33m`;
+const CYAN = `${ESC}36m`;
+const DIM = `${ESC}2m`;
+const BOLD = `${ESC}1m`;
+
+console.log(`${CYAN}[STACK]${RESET} Starting stack trace generator`);
+console.log(`${DIM}[STACK] Simulating errors with full traces${RESET}\n`);
 
 const errorTypes = [
 	{
@@ -60,13 +68,13 @@ const errorTypes = [
 ];
 
 const generateStackTrace = (errorType) => {
-	let trace = `${errorType.name}: ${errorType.message}\n`;
+	let trace = `${BOLD}${RED}${errorType.name}:${RESET} ${RED}${errorType.message}${RESET}\n`;
 	for (const frame of errorType.files) {
-		trace += `    at ${frame.fn} (${frame.file}:${frame.line}:11)\n`;
+		trace += `    at ${YELLOW}${frame.fn}${RESET} ${DIM}(${frame.file}:${frame.line}:11)${RESET}\n`;
 	}
 	// Add some common trailing frames
-	trace += `    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n`;
-	trace += `    at async Promise.all (index 0)`;
+	trace += `    at ${YELLOW}processTicksAndRejections${RESET} ${DIM}(node:internal/process/task_queues:95:5)${RESET}\n`;
+	trace += `    at ${YELLOW}async Promise.all${RESET} ${DIM}(index 0)${RESET}`;
 	return trace;
 };
 
@@ -77,24 +85,24 @@ const interval = setInterval(() => {
 	if (count % 3 === 0) {
 		// Generate an error with stack trace
 		const errorType = errorTypes[Math.floor(Math.random() * errorTypes.length)];
-		console.error(`\n[ERROR #${count}] Caught exception:`);
+		console.error(`\n${RED}[ERROR #${count}]${RESET} Caught exception:`);
 		console.error(generateStackTrace(errorType));
-		console.error(`[ERROR #${count}] End of stack trace\n`);
+		console.error(`${RED}[ERROR #${count}]${RESET} End of stack trace\n`);
 	} else {
 		// Normal log line
 		const timestamp = new Date().toISOString();
-		console.log(`[${timestamp}] Processing request #${count}...`);
+		console.log(`${DIM}[${timestamp}]${RESET} Processing request #${count}...`);
 	}
 }, 2000);
 
 process.on("SIGTERM", () => {
 	clearInterval(interval);
-	console.log("[STACK] Shutting down");
+	console.log(`${YELLOW}[STACK]${RESET} Shutting down`);
 	process.exit(0);
 });
 
 process.on("SIGINT", () => {
 	clearInterval(interval);
-	console.log("[STACK] Shutting down");
+	console.log(`${YELLOW}[STACK]${RESET} Shutting down`);
 	process.exit(0);
 });
