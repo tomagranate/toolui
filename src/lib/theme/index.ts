@@ -10,9 +10,10 @@ export {
 	queryTerminalColors,
 	queryTerminalColorsBatch,
 } from "./terminal-colors";
-export type { Theme } from "./themes";
+export type { AnsiPalette, Theme } from "./themes";
 export {
 	buildTerminalTheme,
+	DEFAULT_ANSI_PALETTE,
 	getTerminalTheme,
 	getTheme,
 	mapAnsiColor,

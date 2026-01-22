@@ -17,21 +17,90 @@ import React, {
 	useState,
 } from "react";
 import { copyToClipboard } from "../../lib/clipboard";
-import type { Theme } from "../../lib/theme";
+import type { AnsiPalette, Theme } from "../../lib/theme";
 import type { ToolState } from "../../types";
+
+/**
+ * Resolves the foreground color for a segment using the theme's ANSI palette.
+ * If colorIndex is set (0-15), looks up from palette; otherwise uses color directly.
+ */
+function resolveRawFgColor(
+	segment: { color?: string; colorIndex?: number },
+	palette: AnsiPalette,
+	fallback: string,
+): string {
+	if (segment.colorIndex !== undefined) {
+		if (segment.colorIndex < 8) {
+			return palette.standard[segment.colorIndex] ?? fallback;
+		}
+		return palette.bright[segment.colorIndex - 8] ?? fallback;
+	}
+	return segment.color ?? fallback;
+}
+
+/**
+ * Resolves the background color for a segment using the theme's ANSI palette.
+ */
+function resolveRawBgColor(
+	segment: { bgColor?: string; bgColorIndex?: number },
+	palette: AnsiPalette,
+): string | undefined {
+	if (segment.bgColorIndex !== undefined) {
+		if (segment.bgColorIndex < 8) {
+			return palette.standard[segment.bgColorIndex];
+		}
+		return palette.bright[segment.bgColorIndex - 8];
+	}
+	return segment.bgColor;
+}
+
+/**
+ * Resolves foreground and background colors for a segment, handling INVERSE attribute.
+ * When INVERSE is set, foreground and background are swapped.
+ */
+function resolveSegmentColors(
+	segment: {
+		color?: string;
+		colorIndex?: number;
+		bgColor?: string;
+		bgColorIndex?: number;
+		attributes?: number;
+	},
+	palette: AnsiPalette,
+	defaultFg: string,
+	defaultBg: string,
+): { fg: string; bg: string | undefined } {
+	const rawFg = resolveRawFgColor(segment, palette, defaultFg);
+	const rawBg = resolveRawBgColor(segment, palette);
+
+	// Check if INVERSE attribute is set
+	const isInverse = (segment.attributes ?? 0) & TextAttributes.INVERSE;
+
+	if (isInverse) {
+		// Swap foreground and background
+		// If no background was set, use the default background for the new foreground
+		return {
+			fg: rawBg ?? defaultBg,
+			bg: rawFg,
+		};
+	}
+
+	return { fg: rawFg, bg: rawBg };
+}
+
 import { TextInput } from "../TextInput";
 import { toast } from "../Toast";
 import { lineHeightCacheStore } from "./LineHeightCacheStore";
 import {
 	calculateContentWidth,
-	calculateHighlightSegments,
 	calculateScrollInfo,
 	calculateVisibleRange,
 	findMatchingLines,
 	getLineNumberWidth,
+	highlightSegmentsWithSearch,
 	LINE_NUMBER_WIDTH_THRESHOLD,
 	shouldVirtualize,
-	truncateLine,
+	truncateSegments,
 	type VisibleRange,
 } from "./log-viewer-utils";
 import { useScrollInfo } from "./useScrollInfo";
@@ -55,33 +124,6 @@ interface LogViewerProps {
 	sidebarWidth?: number;
 }
 
-// Highlight search matches in a line by splitting into segments
-function highlightMatches(
-	line: string,
-	query: string,
-	matchColor: string,
-	textColor: string,
-): React.ReactNode[] {
-	const segments = calculateHighlightSegments(line, query);
-
-	// If single segment with no match, return plain text
-	if (segments.length === 1 && !segments[0]?.isMatch) {
-		return [line];
-	}
-
-	// Build keys based on cumulative position to ensure uniqueness
-	let pos = 0;
-	return segments.map((segment) => {
-		const key = `${pos}-${segment.isMatch ? "m" : "t"}`;
-		pos += segment.text.length;
-		return (
-			<span key={key} fg={segment.isMatch ? matchColor : textColor}>
-				{segment.text}
-			</span>
-		);
-	});
-}
-
 export const LogViewer = React.memo(function LogViewer({
 	tool,
 	theme,
@@ -97,7 +139,7 @@ export const LogViewer = React.memo(function LogViewer({
 	lineWrap = true,
 	sidebarWidth = 0,
 }: LogViewerProps) {
-	const { colors } = theme;
+	const { colors, ansiPalette } = theme;
 	const scrollboxRef = useRef<ScrollBoxRenderable>(null);
 	const renderer = useRenderer();
 	const { width: terminalWidth } = useTerminalDimensions();
@@ -708,7 +750,7 @@ export const LogViewer = React.memo(function LogViewer({
 						// Render a single log line
 						const renderLogLine = (
 							originalIndex: number,
-							text: string,
+							_text: string,
 							displayIndex: number,
 							isStderr: boolean,
 						) => {
@@ -720,32 +762,82 @@ export const LogViewer = React.memo(function LogViewer({
 								" ",
 							);
 
-							// Get display line (truncated if lineWrap is off)
-							const displayLine = truncateLine(text, contentWidth, lineWrap);
+							// Get the segments for this line (with ANSI colors)
+							const logLine = tool.logs[originalIndex];
+							const segments = logLine?.segments ?? [];
 
-							// Render line content with search match highlighting
+							// Truncate segments if needed (preserves colors)
+							const displaySegments = truncateSegments(
+								segments,
+								contentWidth,
+								lineWrap,
+							);
+
+							// Render line content with ANSI colors and search match highlighting
 							const renderLineContent = () => {
 								// If flashing (double-click copy feedback), highlight entire line
 								if (isFlashing) {
+									const plainText = displaySegments.map((s) => s.text).join("");
 									return (
 										<span bg={colors.selectionBackground} fg={colors.text}>
-											{displayLine}
+											{plainText}
 										</span>
 									);
 								}
 
-								// Search match highlighting
+								// Apply search highlighting on top of ANSI colors
 								if (searchQuery && isMatch) {
-									return highlightMatches(
-										displayLine,
+									const highlighted = highlightSegmentsWithSearch(
+										displaySegments,
 										searchQuery,
-										colors.warning,
-										colors.text,
 									);
+									// Build keys based on cumulative position
+									let pos = 0;
+									return highlighted.map((seg) => {
+										const key = `${pos}-${seg.isMatch ? "m" : "s"}`;
+										pos += seg.text.length;
+										const resolved = resolveSegmentColors(
+											seg,
+											ansiPalette,
+											colors.text,
+											colors.surface0,
+										);
+										return (
+											<span
+												key={key}
+												fg={seg.isMatch ? colors.warning : resolved.fg}
+												bg={resolved.bg}
+												attributes={seg.attributes}
+											>
+												{seg.text}
+											</span>
+										);
+									});
 								}
 
-								// Plain text
-								return displayLine;
+								// Render segments with their ANSI colors
+								// Build keys based on cumulative position
+								let pos = 0;
+								return displaySegments.map((seg) => {
+									const key = `${pos}-s`;
+									pos += seg.text.length;
+									const resolved = resolveSegmentColors(
+										seg,
+										ansiPalette,
+										colors.text,
+										colors.surface0,
+									);
+									return (
+										<span
+											key={key}
+											fg={resolved.fg}
+											bg={resolved.bg}
+											attributes={seg.attributes}
+										>
+											{seg.text}
+										</span>
+									);
+								});
 							};
 
 							// Calculate gutter width for proper column sizing

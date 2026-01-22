@@ -57,6 +57,48 @@ describe("getTheme", () => {
 			expect(typeof theme.colors.selectionBackground).toBe("string");
 		}
 	});
+
+	test("all themes have valid ANSI palettes", () => {
+		const themeNames = Object.keys(themes);
+
+		for (const themeName of themeNames) {
+			const theme = getTheme(themeName);
+			// Verify ANSI palette exists
+			expect(theme.ansiPalette).toBeDefined();
+			expect(theme.ansiPalette.standard).toHaveLength(8);
+			expect(theme.ansiPalette.bright).toHaveLength(8);
+
+			// Verify all palette colors are valid hex strings
+			for (const color of theme.ansiPalette.standard) {
+				expect(color).toMatch(/^#[0-9a-fA-F]{6}$/);
+			}
+			for (const color of theme.ansiPalette.bright) {
+				expect(color).toMatch(/^#[0-9a-fA-F]{6}$/);
+			}
+		}
+	});
+
+	test("different themes have different ANSI palettes", () => {
+		const mist = getTheme("mist");
+		const synthwave = getTheme("synthwave");
+		const defaultTheme = getTheme("default");
+
+		// Mist (light theme) should have different colors than Synthwave (dark theme)
+		expect(mist.ansiPalette.standard[1]).not.toBe(
+			synthwave.ansiPalette.standard[1],
+		); // Red
+		expect(mist.ansiPalette.standard[4]).not.toBe(
+			synthwave.ansiPalette.standard[4],
+		); // Blue
+
+		// Synthwave should have neon-style colors
+		expect(synthwave.ansiPalette.bright[1]).toMatch(/^#[f][0-9a-f]{5}$/i); // Bright colors tend to have high red
+
+		// Default theme uses DEFAULT_ANSI_PALETTE which has standard ANSI colors
+		expect(defaultTheme.ansiPalette.standard[0]).toBe("#000000"); // Black
+		expect(defaultTheme.ansiPalette.standard[1]).toBe("#cc0000"); // Red
+		expect(defaultTheme.ansiPalette.bright[7]).toBe("#ffffff"); // Bright white
+	});
 });
 
 describe("mapAnsiColor", () => {
@@ -284,5 +326,69 @@ describe("buildTerminalTheme", () => {
 		// Should use fallbacks for undefined
 		expect(theme.colors.error).toBe("#ff0000");
 		expect(theme.colors.accent).toBe("#0000ff");
+	});
+
+	test("builds ANSI palette from terminal colors", () => {
+		const colors: TerminalColors = {
+			foreground: "#ffffff",
+			background: "#000000",
+			palette: [
+				"#1a1a1a", // 0: black
+				"#ff5555", // 1: red
+				"#55ff55", // 2: green
+				"#ffff55", // 3: yellow
+				"#5555ff", // 4: blue
+				"#ff55ff", // 5: magenta
+				"#55ffff", // 6: cyan
+				"#aaaaaa", // 7: white
+				"#555555", // 8: bright black
+				"#ff8888", // 9: bright red
+				"#88ff88", // 10: bright green
+				"#ffff88", // 11: bright yellow
+				"#8888ff", // 12: bright blue
+				"#ff88ff", // 13: bright magenta
+				"#88ffff", // 14: bright cyan
+				"#ffffff", // 15: bright white
+			],
+		};
+
+		const theme = buildTerminalTheme(colors);
+
+		// Verify ANSI palette was built from terminal colors
+		expect(theme.ansiPalette.standard[0]).toBe("#1a1a1a"); // Black
+		expect(theme.ansiPalette.standard[1]).toBe("#ff5555"); // Red
+		expect(theme.ansiPalette.standard[4]).toBe("#5555ff"); // Blue
+		expect(theme.ansiPalette.standard[7]).toBe("#aaaaaa"); // White
+
+		expect(theme.ansiPalette.bright[0]).toBe("#555555"); // Bright black
+		expect(theme.ansiPalette.bright[1]).toBe("#ff8888"); // Bright red
+		expect(theme.ansiPalette.bright[7]).toBe("#ffffff"); // Bright white
+	});
+
+	test("uses default ANSI palette for missing terminal palette colors", () => {
+		const colors: TerminalColors = {
+			foreground: "#ffffff",
+			background: "#000000",
+			palette: [
+				"#custom0", // Only 0 is defined
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				...new Array(8).fill(undefined),
+			],
+		};
+
+		const theme = buildTerminalTheme(colors);
+
+		// Defined color should be used
+		expect(theme.ansiPalette.standard[0]).toBe("#custom0");
+		// Undefined colors should fall back to defaults
+		expect(theme.ansiPalette.standard[1]).toBe("#cc0000"); // Default red
+		expect(theme.ansiPalette.standard[7]).toBe("#cccccc"); // Default white
+		expect(theme.ansiPalette.bright[0]).toBe("#666666"); // Default bright black
 	});
 });

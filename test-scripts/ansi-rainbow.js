@@ -27,6 +27,18 @@ console.log(
 	`${ESC}1mBold${RESET} | ${ESC}2mDim${RESET} | ${ESC}3mItalic${RESET} | ${ESC}4mUnderline${RESET} | ${ESC}5mBlink${RESET} | ${ESC}7mReverse${RESET} | ${ESC}9mStrikethrough${RESET}`,
 );
 
+// Reverse/Inverse demo with colors
+console.log("\n=== Reverse/Inverse Demo ===");
+console.log(
+	`${ESC}31;44m Red on Blue (normal) ${RESET} → ${ESC}7;31;44m Red on Blue (reversed) ${RESET}`,
+);
+console.log(
+	`${ESC}32;43m Green on Yellow (normal) ${RESET} → ${ESC}7;32;43m Green on Yellow (reversed) ${RESET}`,
+);
+console.log(
+	`${ESC}97;45m White on Magenta (normal) ${RESET} → ${ESC}7;97;45m White on Magenta (reversed) ${RESET}`,
+);
+
 // Combined styles
 console.log("\n=== Combined Styles ===");
 console.log(

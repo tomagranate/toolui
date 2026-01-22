@@ -1,6 +1,5 @@
 import { TextAttributes } from "@opentui/core";
 import type { TextSegment } from "../../types";
-import { mapAnsiColor } from "../theme";
 
 const ESC = String.fromCharCode(27);
 // Match ANSI escape sequences: ESC[ followed by parameters and ending with a letter
@@ -54,6 +53,9 @@ export function getVisibleWidth(text: string): number {
 
 /**
  * Parses a line containing ANSI escape codes into segments with color/style information.
+ * For basic 16 colors (codes 30-37, 90-97, 40-47, 100-107), stores colorIndex/bgColorIndex
+ * to allow theme-aware rendering. For 256-color and RGB modes, stores hex values directly.
+ * @param text - The text to parse
  */
 export function parseAnsiLine(text: string): TextSegment[] {
 	const segments: TextSegment[] = [];
@@ -61,12 +63,18 @@ export function parseAnsiLine(text: string): TextSegment[] {
 	let currentAttributes = 0;
 
 	// Track state for nested codes
+	// For basic 16 colors, we store indices; for extended colors, we store hex
+	let fgColorIndex: number | undefined;
 	let fgColor: string | undefined;
-	let _bgColor: string | undefined; // Background colors not yet supported
+	let bgColorIndex: number | undefined;
+	let bgColor: string | undefined;
 	let isBold = false;
 	let isDim = false;
-	let _isItalic = false; // Italic not supported by OpenTUI
-	let _isUnderline = false; // Underline not supported by OpenTUI
+	let isItalic = false;
+	let isUnderline = false;
+	let isBlink = false;
+	let isInverse = false;
+	let isStrikethrough = false;
 
 	// Reset function to create a new segment
 	const pushSegment = () => {
@@ -74,6 +82,9 @@ export function parseAnsiLine(text: string): TextSegment[] {
 			segments.push({
 				text: currentText,
 				color: fgColor,
+				colorIndex: fgColorIndex,
+				bgColor: bgColor,
+				bgColorIndex: bgColorIndex,
 				attributes: currentAttributes,
 			});
 			currentText = "";
@@ -103,11 +114,16 @@ export function parseAnsiLine(text: string): TextSegment[] {
 				// Reset all
 				pushSegment();
 				fgColor = undefined;
-				_bgColor = undefined;
+				fgColorIndex = undefined;
+				bgColor = undefined;
+				bgColorIndex = undefined;
 				isBold = false;
 				isDim = false;
-				_isItalic = false;
-				_isUnderline = false;
+				isItalic = false;
+				isUnderline = false;
+				isBlink = false;
+				isInverse = false;
+				isStrikethrough = false;
 				currentAttributes = 0;
 			} else {
 				const codes = params
@@ -123,51 +139,87 @@ export function parseAnsiLine(text: string): TextSegment[] {
 						// Reset all
 						pushSegment();
 						fgColor = undefined;
-						_bgColor = undefined;
+						fgColorIndex = undefined;
+						bgColor = undefined;
+						bgColorIndex = undefined;
 						isBold = false;
 						isDim = false;
-						_isItalic = false;
-						_isUnderline = false;
+						isItalic = false;
+						isUnderline = false;
+						isBlink = false;
+						isInverse = false;
+						isStrikethrough = false;
 						currentAttributes = 0;
 					} else if (c === 1) {
+						pushSegment();
 						isBold = true;
 					} else if (c === 2) {
+						pushSegment();
 						isDim = true;
 					} else if (c === 3) {
-						_isItalic = true;
+						pushSegment();
+						isItalic = true;
 					} else if (c === 4) {
-						_isUnderline = true;
+						pushSegment();
+						isUnderline = true;
+					} else if (c === 5) {
+						pushSegment();
+						isBlink = true;
+					} else if (c === 7) {
+						pushSegment();
+						isInverse = true;
+					} else if (c === 9) {
+						pushSegment();
+						isStrikethrough = true;
 					} else if (c === 22) {
+						pushSegment();
 						isBold = false;
 						isDim = false;
 					} else if (c === 23) {
-						_isItalic = false;
+						pushSegment();
+						isItalic = false;
 					} else if (c === 24) {
-						_isUnderline = false;
+						pushSegment();
+						isUnderline = false;
+					} else if (c === 25) {
+						pushSegment();
+						isBlink = false;
+					} else if (c === 27) {
+						pushSegment();
+						isInverse = false;
+					} else if (c === 29) {
+						pushSegment();
+						isStrikethrough = false;
 					} else if (c === 39) {
 						// Default foreground
+						pushSegment();
 						fgColor = undefined;
+						fgColorIndex = undefined;
 					} else if (c === 49) {
 						// Default background
-						_bgColor = undefined;
+						pushSegment();
+						bgColor = undefined;
+						bgColorIndex = undefined;
 					} else if (c >= 30 && c <= 37) {
-						// Standard foreground colors
-						const mapped = mapAnsiColor(c, false);
-						if (mapped) {
-							fgColor = mapped;
-						}
+						// Standard foreground colors (0-7) - store as index
+						pushSegment();
+						fgColor = undefined;
+						fgColorIndex = c - 30;
 					} else if (c >= 90 && c <= 97) {
-						// Bright foreground colors
-						const mapped = mapAnsiColor(c, true);
-						if (mapped) {
-							fgColor = mapped;
-						}
+						// Bright foreground colors (8-15) - store as index
+						pushSegment();
+						fgColor = undefined;
+						fgColorIndex = 8 + (c - 90);
 					} else if (c >= 40 && c <= 47) {
-						// Standard background colors (we'll ignore these for now)
-						// bgColor = mapAnsiColor(c - 10, false);
+						// Standard background colors (0-7) - store as index
+						pushSegment();
+						bgColor = undefined;
+						bgColorIndex = c - 40;
 					} else if (c >= 100 && c <= 107) {
-						// Bright background colors (we'll ignore these for now)
-						// bgColor = mapAnsiColor(c - 10, true);
+						// Bright background colors (8-15) - store as index
+						pushSegment();
+						bgColor = undefined;
+						bgColorIndex = 8 + (c - 100);
 					} else if (c === 38) {
 						// Extended foreground color
 						if (i + 1 < codes.length) {
@@ -177,8 +229,16 @@ export function parseAnsiLine(text: string): TextSegment[] {
 								if (i + 2 < codes.length) {
 									const color256 = codes[i + 2];
 									if (color256 !== undefined) {
-										// Map 256-color to closest standard color
-										fgColor = map256Color(color256);
+										pushSegment();
+										if (color256 <= 15) {
+											// Basic 16 colors - store as index for theme-aware rendering
+											fgColor = undefined;
+											fgColorIndex = color256;
+										} else {
+											// Extended colors (16-255) - store as hex
+											fgColorIndex = undefined;
+											fgColor = map256Color(color256);
+										}
 										i += 2;
 									}
 								}
@@ -189,6 +249,8 @@ export function parseAnsiLine(text: string): TextSegment[] {
 									const g = codes[i + 3];
 									const b = codes[i + 4];
 									if (r !== undefined && g !== undefined && b !== undefined) {
+										pushSegment();
+										fgColorIndex = undefined;
 										fgColor = rgbToHex(r, g, b);
 										i += 4;
 									}
@@ -196,28 +258,68 @@ export function parseAnsiLine(text: string): TextSegment[] {
 							}
 						}
 					} else if (c === 48) {
-						// Extended background color (we'll ignore these for now)
+						// Extended background color
 						if (i + 1 < codes.length) {
 							const nextCode = codes[i + 1];
 							if (nextCode === 5) {
-								i += 2;
+								// 256-color mode: 48;5;X
+								if (i + 2 < codes.length) {
+									const color256 = codes[i + 2];
+									if (color256 !== undefined) {
+										pushSegment();
+										if (color256 <= 15) {
+											// Basic 16 colors - store as index for theme-aware rendering
+											bgColor = undefined;
+											bgColorIndex = color256;
+										} else {
+											// Extended colors (16-255) - store as hex
+											bgColorIndex = undefined;
+											bgColor = map256Color(color256);
+										}
+										i += 2;
+									}
+								}
 							} else if (nextCode === 2) {
-								i += 4;
+								// RGB mode: 48;2;R;G;B
+								if (i + 4 < codes.length) {
+									const r = codes[i + 2];
+									const g = codes[i + 3];
+									const b = codes[i + 4];
+									if (r !== undefined && g !== undefined && b !== undefined) {
+										pushSegment();
+										bgColorIndex = undefined;
+										bgColor = rgbToHex(r, g, b);
+										i += 4;
+									}
+								}
 							}
 						}
 					}
 				}
 
-				// Update attributes
+				// Update attributes based on current state
 				currentAttributes = 0;
 				if (isBold) {
 					currentAttributes |= TextAttributes.BOLD;
 				}
 				if (isDim) {
-					// Dim is not directly supported, but we can use it if available
-					// For now, we'll just note it
+					currentAttributes |= TextAttributes.DIM;
 				}
-				// Note: Italic and underline may not be supported by OpenTUI
+				if (isItalic) {
+					currentAttributes |= TextAttributes.ITALIC;
+				}
+				if (isUnderline) {
+					currentAttributes |= TextAttributes.UNDERLINE;
+				}
+				if (isBlink) {
+					currentAttributes |= TextAttributes.BLINK;
+				}
+				if (isInverse) {
+					currentAttributes |= TextAttributes.INVERSE;
+				}
+				if (isStrikethrough) {
+					currentAttributes |= TextAttributes.STRIKETHROUGH;
+				}
 			}
 		}
 
@@ -243,23 +345,30 @@ export function parseAnsiLine(text: string): TextSegment[] {
 }
 
 /**
- * Maps a 256-color ANSI code to a hex color.
- * Uses a simplified mapping to standard colors.
+ * Maps a 256-color ANSI code (16-255) to a hex color.
+ * Note: Codes 0-15 are handled via colorIndex for theme-aware rendering.
+ * Supports:
+ * - 16-231: 6x6x6 color cube
+ * - 232-255: Grayscale ramp
  */
 function map256Color(code: number): string {
-	// Map to closest standard color
-	if (code >= 0 && code <= 7) {
-		// Standard colors
-		const mapped = mapAnsiColor(30 + code, false);
-		return mapped ?? "#ffffff";
+	if (code >= 16 && code <= 231) {
+		// 6x6x6 color cube
+		// Each component ranges 0-5, mapped to 0, 95, 135, 175, 215, 255
+		const cubeIndex = code - 16;
+		const r = Math.floor(cubeIndex / 36);
+		const g = Math.floor((cubeIndex % 36) / 6);
+		const b = cubeIndex % 6;
+		const toRgb = (v: number) => (v === 0 ? 0 : 55 + v * 40);
+		return rgbToHex(toRgb(r), toRgb(g), toRgb(b));
 	}
-	if (code >= 8 && code <= 15) {
-		// Bright colors
-		const mapped = mapAnsiColor(90 + (code - 8), true);
-		return mapped ?? "#ffffff";
+	if (code >= 232 && code <= 255) {
+		// Grayscale ramp (24 shades from dark to light)
+		// 232 = #080808, 255 = #eeeeee
+		const gray = 8 + (code - 232) * 10;
+		return rgbToHex(gray, gray, gray);
 	}
-	// For other colors, use a simple approximation
-	// This is a simplified mapping
+	// Fallback for any unexpected values
 	return "#ffffff";
 }
 
@@ -269,7 +378,8 @@ function map256Color(code: number): string {
 function rgbToHex(r: number, g: number, b: number): string {
 	return `#${[r, g, b]
 		.map((x) => {
-			const hex = x.toString(16);
+			const clamped = Math.max(0, Math.min(255, x));
+			const hex = clamped.toString(16);
 			return hex.length === 1 ? `0${hex}` : hex;
 		})
 		.join("")}`;

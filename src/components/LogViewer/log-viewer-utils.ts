@@ -1,3 +1,6 @@
+import { getVisibleWidth } from "../../lib/text/ansi";
+import type { TextSegment } from "../../types";
+
 /** Calculate the width needed for line numbers */
 export function getLineNumberWidth(totalLines: number): number {
 	return Math.max(3, String(totalLines).length);
@@ -169,6 +172,7 @@ export interface LineHeightCache {
 
 /**
  * Calculate how many terminal rows a single line occupies.
+ * Uses getVisibleWidth to properly handle ANSI codes and wide characters.
  */
 export function calculateLineRows(
 	line: string,
@@ -178,7 +182,9 @@ export function calculateLineRows(
 	if (!lineWrap) return 1;
 	if (line.length === 0) return 1;
 	if (contentWidth <= 0) return 1;
-	return Math.ceil(line.length / contentWidth);
+	// Use visible width to properly handle ANSI codes and wide characters
+	const visibleWidth = getVisibleWidth(line);
+	return Math.ceil(visibleWidth / contentWidth);
 }
 
 /**
@@ -440,4 +446,225 @@ export function calculateHighlightSegments(
 	}
 
 	return segments;
+}
+
+// ============================================================================
+// Segment-aware utilities for ANSI color support
+// ============================================================================
+
+/**
+ * Calculate the total visible width of an array of text segments.
+ * Uses getVisibleWidth which properly handles wide Unicode characters.
+ */
+export function getSegmentsVisibleWidth(segments: TextSegment[]): number {
+	let width = 0;
+	for (const segment of segments) {
+		width += getVisibleWidth(segment.text);
+	}
+	return width;
+}
+
+/**
+ * Truncate segments to fit within the given width, adding ellipsis if needed.
+ * Preserves color and attribute information for each segment.
+ * Returns the original segments if they fit or if lineWrap is enabled.
+ */
+export function truncateSegments(
+	segments: TextSegment[],
+	maxWidth: number,
+	lineWrap: boolean,
+): TextSegment[] {
+	if (lineWrap || segments.length === 0) return segments;
+
+	const totalWidth = getSegmentsVisibleWidth(segments);
+	if (totalWidth <= maxWidth) return segments;
+
+	// Need to truncate - walk through segments and cut at maxWidth - 1 (for ellipsis)
+	const targetWidth = maxWidth - 1;
+	const result: TextSegment[] = [];
+	let currentWidth = 0;
+
+	for (const segment of segments) {
+		const segmentWidth = getVisibleWidth(segment.text);
+
+		if (currentWidth + segmentWidth <= targetWidth) {
+			// Entire segment fits
+			result.push(segment);
+			currentWidth += segmentWidth;
+		} else {
+			// Need to truncate this segment
+			const remainingWidth = targetWidth - currentWidth;
+			if (remainingWidth > 0) {
+				// Truncate the segment text character by character to handle wide chars
+				let truncatedText = "";
+				let truncatedWidth = 0;
+				for (const char of segment.text) {
+					const charWidth = getVisibleWidth(char);
+					if (truncatedWidth + charWidth <= remainingWidth) {
+						truncatedText += char;
+						truncatedWidth += charWidth;
+					} else {
+						break;
+					}
+				}
+				if (truncatedText.length > 0) {
+					result.push({
+						text: truncatedText,
+						color: segment.color,
+						bgColor: segment.bgColor,
+						colorIndex: segment.colorIndex,
+						bgColorIndex: segment.bgColorIndex,
+						attributes: segment.attributes,
+					});
+				}
+			}
+			// Add ellipsis as a separate segment (inherits no color - uses default)
+			result.push({ text: "…" });
+			break;
+		}
+	}
+
+	return result;
+}
+
+/** A segment with ANSI styling plus search match information */
+export interface StyledHighlightSegment {
+	text: string;
+	color?: string;
+	bgColor?: string;
+	colorIndex?: number;
+	bgColorIndex?: number;
+	attributes?: number;
+	isMatch: boolean;
+}
+
+/**
+ * Overlay search highlighting on styled text segments.
+ * Splits segments at match boundaries while preserving original colors.
+ * Match portions get isMatch: true for special highlighting.
+ */
+export function highlightSegmentsWithSearch(
+	segments: TextSegment[],
+	query: string,
+): StyledHighlightSegment[] {
+	if (!query || segments.length === 0) {
+		return segments.map((seg) => ({
+			text: seg.text,
+			color: seg.color,
+			bgColor: seg.bgColor,
+			colorIndex: seg.colorIndex,
+			bgColorIndex: seg.bgColorIndex,
+			attributes: seg.attributes,
+			isMatch: false,
+		}));
+	}
+
+	const lowerQuery = query.toLowerCase();
+	const result: StyledHighlightSegment[] = [];
+
+	// Build a flat representation of all text with segment boundaries
+	// so we can find matches across segment boundaries
+	const fullText = segments.map((s) => s.text).join("");
+	const lowerFullText = fullText.toLowerCase();
+
+	// Find all match positions in the full text
+	const matchRanges: Array<{ start: number; end: number }> = [];
+	let searchStart = 0;
+	let matchIndex = lowerFullText.indexOf(lowerQuery, searchStart);
+	while (matchIndex !== -1) {
+		matchRanges.push({ start: matchIndex, end: matchIndex + query.length });
+		searchStart = matchIndex + query.length;
+		matchIndex = lowerFullText.indexOf(lowerQuery, searchStart);
+	}
+
+	// If no matches, return segments with isMatch: false
+	if (matchRanges.length === 0) {
+		return segments.map((seg) => ({
+			text: seg.text,
+			color: seg.color,
+			bgColor: seg.bgColor,
+			colorIndex: seg.colorIndex,
+			bgColorIndex: seg.bgColorIndex,
+			attributes: seg.attributes,
+			isMatch: false,
+		}));
+	}
+
+	// Walk through each segment and split at match boundaries
+	let globalPos = 0;
+	let matchIdx = 0;
+
+	for (const segment of segments) {
+		const segStart = globalPos;
+		const segEnd = globalPos + segment.text.length;
+		let localPos = 0;
+
+		while (localPos < segment.text.length) {
+			const absPos = segStart + localPos;
+
+			// Skip past any matches that ended before current position
+			while (matchIdx < matchRanges.length) {
+				const range = matchRanges[matchIdx];
+				if (range && range.end <= absPos) {
+					matchIdx++;
+				} else {
+					break;
+				}
+			}
+
+			const currentMatch = matchRanges[matchIdx];
+			const inMatch =
+				currentMatch &&
+				absPos >= currentMatch.start &&
+				absPos < currentMatch.end;
+
+			if (inMatch && currentMatch) {
+				// We're inside a match - output match portion
+				const matchEndInSegment = Math.min(
+					currentMatch.end - segStart,
+					segment.text.length,
+				);
+				const matchText = segment.text.substring(localPos, matchEndInSegment);
+				if (matchText.length > 0) {
+					result.push({
+						text: matchText,
+						color: segment.color,
+						bgColor: segment.bgColor,
+						colorIndex: segment.colorIndex,
+						bgColorIndex: segment.bgColorIndex,
+						attributes: segment.attributes,
+						isMatch: true,
+					});
+				}
+				localPos = matchEndInSegment;
+			} else {
+				// Not in a match - output non-match portion until next match or segment end
+				const nextMatchStart = currentMatch ? currentMatch.start : segEnd;
+				const nonMatchEndInSegment = Math.min(
+					nextMatchStart - segStart,
+					segment.text.length,
+				);
+				const nonMatchText = segment.text.substring(
+					localPos,
+					nonMatchEndInSegment,
+				);
+				if (nonMatchText.length > 0) {
+					result.push({
+						text: nonMatchText,
+						color: segment.color,
+						bgColor: segment.bgColor,
+						colorIndex: segment.colorIndex,
+						bgColorIndex: segment.bgColorIndex,
+						attributes: segment.attributes,
+						isMatch: false,
+					});
+				}
+				localPos = nonMatchEndInSegment;
+			}
+		}
+
+		globalPos = segEnd;
+	}
+
+	return result;
 }

@@ -9,7 +9,12 @@ export interface ToolConfig {
 
 export interface TextSegment {
 	text: string;
-	color?: string; // OpenTUI color (name or hex)
+	color?: string; // OpenTUI foreground color (hex) - for 256-color/RGB modes
+	bgColor?: string; // OpenTUI background color (hex) - for 256-color/RGB modes
+	/** ANSI color index (0-15) for theme-aware coloring. If set, use theme.ansiPalette */
+	colorIndex?: number;
+	/** ANSI background color index (0-15) for theme-aware coloring */
+	bgColorIndex?: number;
 	attributes?: number; // TextAttributes flags (bold, dim, etc.)
 }
 

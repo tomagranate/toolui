@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { TextSegment } from "../../../types";
 import {
 	buildLineHeightCache,
 	calculateContentWidth,
@@ -11,10 +12,13 @@ import {
 	findMatchingLines,
 	getLineNumberWidth,
 	getLineStartRow,
+	getSegmentsVisibleWidth,
 	getTotalRows,
+	highlightSegmentsWithSearch,
 	OVERSCAN_COUNT,
 	shouldVirtualize,
 	truncateLine,
+	truncateSegments,
 	VIRTUALIZATION_THRESHOLD,
 } from "../log-viewer-utils";
 
@@ -884,6 +888,260 @@ describe("Line Height Cache", () => {
 			// Precise spacer heights (row-based)
 			expect(result.topSpacerHeight).toBe(0);
 			expect(result.bottomSpacerHeight).toBe(3); // Total 5 rows - 2 rendered = 3
+		});
+	});
+});
+
+describe("Segment utilities", () => {
+	describe("getSegmentsVisibleWidth", () => {
+		test("returns 0 for empty segments", () => {
+			expect(getSegmentsVisibleWidth([])).toBe(0);
+		});
+
+		test("calculates width of single segment", () => {
+			const segments: TextSegment[] = [{ text: "Hello" }];
+			expect(getSegmentsVisibleWidth(segments)).toBe(5);
+		});
+
+		test("calculates width of multiple segments", () => {
+			const segments: TextSegment[] = [{ text: "Hello " }, { text: "World" }];
+			expect(getSegmentsVisibleWidth(segments)).toBe(11);
+		});
+
+		test("handles segments with colors (width unchanged)", () => {
+			const segments: TextSegment[] = [
+				{ text: "Red", color: "#ff0000" },
+				{ text: "Blue", color: "#0000ff", bgColor: "#ffffff" },
+			];
+			expect(getSegmentsVisibleWidth(segments)).toBe(7);
+		});
+
+		test("handles wide unicode characters", () => {
+			const segments: TextSegment[] = [
+				{ text: "Hello" },
+				{ text: "世界" }, // 4 columns (2 wide chars)
+			];
+			expect(getSegmentsVisibleWidth(segments)).toBe(9);
+		});
+	});
+
+	describe("truncateSegments", () => {
+		test("returns original segments when lineWrap is true", () => {
+			const segments: TextSegment[] = [
+				{ text: "This is a long line", color: "#ff0000" },
+			];
+			const result = truncateSegments(segments, 10, true);
+			expect(result).toBe(segments);
+		});
+
+		test("returns original segments when width is sufficient", () => {
+			const segments: TextSegment[] = [{ text: "Short" }];
+			const result = truncateSegments(segments, 10, false);
+			expect(result).toEqual(segments);
+		});
+
+		test("truncates and adds ellipsis when exceeding width", () => {
+			const segments: TextSegment[] = [{ text: "Hello World" }];
+			const result = truncateSegments(segments, 8, false);
+			const allText = result.map((s) => s.text).join("");
+			expect(allText).toBe("Hello W…");
+			expect(result.length).toBe(2); // truncated segment + ellipsis
+		});
+
+		test("preserves color when truncating", () => {
+			const segments: TextSegment[] = [
+				{ text: "Hello World", color: "#ff0000" },
+			];
+			const result = truncateSegments(segments, 8, false);
+			expect(result[0]?.color).toBe("#ff0000");
+		});
+
+		test("preserves bgColor when truncating", () => {
+			const segments: TextSegment[] = [
+				{ text: "Hello World", bgColor: "#0000ff" },
+			];
+			const result = truncateSegments(segments, 8, false);
+			expect(result[0]?.bgColor).toBe("#0000ff");
+		});
+
+		test("preserves attributes when truncating", () => {
+			const segments: TextSegment[] = [{ text: "Hello World", attributes: 1 }];
+			const result = truncateSegments(segments, 8, false);
+			expect(result[0]?.attributes).toBe(1);
+		});
+
+		test("preserves all styling properties together", () => {
+			const segments: TextSegment[] = [
+				{
+					text: "Styled text here",
+					color: "#ff0000",
+					bgColor: "#0000ff",
+					attributes: 5,
+				},
+			];
+			const result = truncateSegments(segments, 10, false);
+			expect(result[0]?.color).toBe("#ff0000");
+			expect(result[0]?.bgColor).toBe("#0000ff");
+			expect(result[0]?.attributes).toBe(5);
+		});
+
+		test("handles multiple segments with truncation in middle segment", () => {
+			const segments: TextSegment[] = [
+				{ text: "First ", color: "#ff0000" },
+				{ text: "Second", color: "#00ff00", bgColor: "#333333" },
+			];
+			const result = truncateSegments(segments, 10, false);
+			const allText = result.map((s) => s.text).join("");
+			expect(allText).toBe("First Sec…");
+			// First segment should be preserved fully
+			expect(result[0]?.text).toBe("First ");
+			expect(result[0]?.color).toBe("#ff0000");
+			// Second segment truncated with its styling
+			expect(result[1]?.color).toBe("#00ff00");
+			expect(result[1]?.bgColor).toBe("#333333");
+		});
+
+		test("returns empty segments unchanged", () => {
+			const result = truncateSegments([], 10, false);
+			expect(result).toEqual([]);
+		});
+
+		test("handles exact width match without truncation", () => {
+			const segments: TextSegment[] = [{ text: "Exact" }];
+			const result = truncateSegments(segments, 5, false);
+			expect(result).toEqual(segments);
+		});
+	});
+
+	describe("highlightSegmentsWithSearch", () => {
+		test("returns segments with isMatch false when query is empty", () => {
+			const segments: TextSegment[] = [{ text: "Hello World" }];
+			const result = highlightSegmentsWithSearch(segments, "");
+			expect(result).toHaveLength(1);
+			expect(result[0]?.isMatch).toBe(false);
+			expect(result[0]?.text).toBe("Hello World");
+		});
+
+		test("returns segments with isMatch false when no matches", () => {
+			const segments: TextSegment[] = [{ text: "Hello World" }];
+			const result = highlightSegmentsWithSearch(segments, "xyz");
+			expect(result).toHaveLength(1);
+			expect(result[0]?.isMatch).toBe(false);
+		});
+
+		test("highlights matching text", () => {
+			const segments: TextSegment[] = [{ text: "Hello World" }];
+			const result = highlightSegmentsWithSearch(segments, "World");
+			expect(result.length).toBeGreaterThan(1);
+
+			const matchSeg = result.find((s) => s.isMatch);
+			expect(matchSeg?.text).toBe("World");
+
+			const nonMatchSeg = result.find((s) => !s.isMatch);
+			expect(nonMatchSeg?.text).toBe("Hello ");
+		});
+
+		test("preserves color in highlighted segments", () => {
+			const segments: TextSegment[] = [
+				{ text: "Hello World", color: "#ff0000" },
+			];
+			const result = highlightSegmentsWithSearch(segments, "World");
+
+			for (const seg of result) {
+				expect(seg.color).toBe("#ff0000");
+			}
+		});
+
+		test("preserves bgColor in highlighted segments", () => {
+			const segments: TextSegment[] = [
+				{ text: "Hello World", bgColor: "#0000ff" },
+			];
+			const result = highlightSegmentsWithSearch(segments, "World");
+
+			for (const seg of result) {
+				expect(seg.bgColor).toBe("#0000ff");
+			}
+		});
+
+		test("preserves attributes in highlighted segments", () => {
+			const segments: TextSegment[] = [{ text: "Hello World", attributes: 3 }];
+			const result = highlightSegmentsWithSearch(segments, "World");
+
+			for (const seg of result) {
+				expect(seg.attributes).toBe(3);
+			}
+		});
+
+		test("preserves all styling in highlighted segments", () => {
+			const segments: TextSegment[] = [
+				{
+					text: "Hello World",
+					color: "#ff0000",
+					bgColor: "#0000ff",
+					attributes: 5,
+				},
+			];
+			const result = highlightSegmentsWithSearch(segments, "World");
+
+			for (const seg of result) {
+				expect(seg.color).toBe("#ff0000");
+				expect(seg.bgColor).toBe("#0000ff");
+				expect(seg.attributes).toBe(5);
+			}
+		});
+
+		test("handles multiple segments with match spanning segments", () => {
+			const segments: TextSegment[] = [
+				{ text: "Hel", color: "#ff0000" },
+				{ text: "lo World", color: "#00ff00", bgColor: "#333333" },
+			];
+			const result = highlightSegmentsWithSearch(segments, "Hello");
+
+			// "Hello" spans both segments
+			const matchSegs = result.filter((s) => s.isMatch);
+			expect(matchSegs.length).toBeGreaterThan(0);
+
+			// Colors should be preserved from original segments
+			const redMatch = matchSegs.find((s) => s.color === "#ff0000");
+			const greenMatch = matchSegs.find((s) => s.color === "#00ff00");
+			expect(redMatch).toBeDefined();
+			expect(greenMatch).toBeDefined();
+		});
+
+		test("handles case-insensitive matching", () => {
+			const segments: TextSegment[] = [{ text: "Hello WORLD" }];
+			const result = highlightSegmentsWithSearch(segments, "world");
+
+			const matchSeg = result.find((s) => s.isMatch);
+			expect(matchSeg?.text).toBe("WORLD");
+		});
+
+		test("handles multiple matches", () => {
+			const segments: TextSegment[] = [{ text: "foo bar foo baz foo" }];
+			const result = highlightSegmentsWithSearch(segments, "foo");
+
+			const matches = result.filter((s) => s.isMatch);
+			expect(matches.length).toBe(3);
+			for (const match of matches) {
+				expect(match.text).toBe("foo");
+			}
+		});
+
+		test("handles empty segments array", () => {
+			const result = highlightSegmentsWithSearch([], "test");
+			expect(result).toEqual([]);
+		});
+
+		test("handles segment with only match text", () => {
+			const segments: TextSegment[] = [
+				{ text: "exact", color: "#ff0000", bgColor: "#0000ff" },
+			];
+			const result = highlightSegmentsWithSearch(segments, "exact");
+			expect(result).toHaveLength(1);
+			expect(result[0]?.isMatch).toBe(true);
+			expect(result[0]?.text).toBe("exact");
+			expect(result[0]?.color).toBe("#ff0000");
+			expect(result[0]?.bgColor).toBe("#0000ff");
 		});
 	});
 });
