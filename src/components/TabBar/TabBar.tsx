@@ -12,6 +12,13 @@ import {
 	truncateName,
 } from "./tab-utils";
 
+/** Home icon for the home tab */
+const HOME_ICON = "⌂";
+
+/** Calculate home tab width: icon + space + "Home" + padding (2+2) */
+const HOME_TAB_WIDTH_BASE = 10; // "⌂ Home" (6) + padding (4)
+const HOME_TAB_WIDTH_WITH_NUMBERS = 12; // Add "`:" (2) for tab numbers
+
 interface TabBarProps {
 	tools: ToolState[];
 	activeIndex: number;
@@ -21,6 +28,7 @@ interface TabBarProps {
 	width?: number; // Terminal width for horizontal tab calculations
 	showTabNumbers?: boolean; // Show 1-9 shortcuts on first 9 tabs
 	navigationKey?: number; // Increment this when keyboard/shortcut navigation happens to trigger auto-scroll
+	homeEnabled?: boolean; // Whether home tab is shown as first tab
 }
 
 export function TabBar({
@@ -32,6 +40,7 @@ export function TabBar({
 	width = 80,
 	showTabNumbers = false,
 	navigationKey = 0,
+	homeEnabled = false,
 }: TabBarProps) {
 	const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 	const [scrollOffset, setScrollOffset] = useState(0); // First visible tab index
@@ -68,10 +77,21 @@ export function TabBar({
 	// Calculate if we have tabs before/after the visible range
 	const hasMoreLeft = scrollOffset > 0;
 
+	// Calculate home tab width when it's visible (scrollOffset === 0)
+	const homeTabWidth =
+		homeEnabled && scrollOffset === 0
+			? showTabNumbers
+				? HOME_TAB_WIDTH_WITH_NUMBERS
+				: HOME_TAB_WIDTH_BASE
+			: 0;
+
+	// Effective width for tool tabs (subtract home tab width when visible)
+	const effectiveWidth = width - homeTabWidth;
+
 	// Calculate visible tabs
 	const { visibleIndices, lastVisibleIndex } = calculateVisibleTabs(
 		tools,
-		width,
+		effectiveWidth,
 		scrollOffset,
 		needsScrolling,
 		showTabNumbers,
@@ -84,7 +104,7 @@ export function TabBar({
 	const tabExtraPadding = calculateTabExtraPadding(
 		tools,
 		visibleIndices,
-		width,
+		effectiveWidth,
 		needsScrolling,
 		showTabNumbers,
 	);
@@ -244,29 +264,63 @@ export function TabBar({
 				paddingBottom={1}
 				backgroundColor={colors.surface1}
 			>
-				{tools.map((tool, index) => (
+				{/* Home tab when enabled */}
+				{homeEnabled && (
 					<box
-						key={`${tool.config.name}-${index}`}
+						key="home-tab"
 						paddingLeft={2}
 						paddingRight={2}
 						paddingTop={0}
 						paddingBottom={0}
-						backgroundColor={getTabBackgroundColor(index)}
+						backgroundColor={
+							activeIndex === 0
+								? colors.accent
+								: hoveredIndex === -10
+									? colors.accent
+									: colors.surface1
+						}
 						{...({
-							onMouseDown: () => onSelect(index),
-							onMouseEnter: () => setHoveredIndex(index),
+							onMouseDown: () => onSelect(0),
+							onMouseEnter: () => setHoveredIndex(-10),
 							onMouseLeave: () => setHoveredIndex(null),
 						} as Record<string, unknown>)}
 					>
 						<text
-							attributes={index === activeIndex ? TextAttributes.BOLD : 0}
-							fg={getTabTextColor(tool, index)}
+							attributes={activeIndex === 0 ? TextAttributes.BOLD : 0}
+							fg={activeIndex === 0 ? colors.accentForeground : colors.text}
 						>
-							{getStatusIcon(tool.status)}
-							{tool.config.name}
+							{HOME_ICON} Home
 						</text>
 					</box>
-				))}
+				)}
+				{/* Tool tabs */}
+				{tools.map((tool, index) => {
+					// When home is enabled, tool tabs start at index 1
+					const tabIndex = homeEnabled ? index + 1 : index;
+					return (
+						<box
+							key={`${tool.config.name}-${index}`}
+							paddingLeft={2}
+							paddingRight={2}
+							paddingTop={0}
+							paddingBottom={0}
+							backgroundColor={getTabBackgroundColor(tabIndex)}
+							{...({
+								onMouseDown: () => onSelect(tabIndex),
+								onMouseEnter: () => setHoveredIndex(tabIndex),
+								onMouseLeave: () => setHoveredIndex(null),
+							} as Record<string, unknown>)}
+						>
+							<text
+								attributes={tabIndex === activeIndex ? TextAttributes.BOLD : 0}
+								fg={getTabTextColor(tool, tabIndex)}
+							>
+								{getStatusIcon(tool.status)}
+								{tool.config.name}
+							</text>
+						</box>
+					);
+				})}
 			</scrollbox>
 		);
 	}
@@ -315,7 +369,41 @@ export function TabBar({
 				</box>
 			)}
 
-			{/* Visible tabs */}
+			{/* Home tab when enabled (always visible, before tool tabs) */}
+			{homeEnabled && scrollOffset === 0 && (
+				<box
+					key="home-tab"
+					paddingLeft={2}
+					paddingRight={2}
+					paddingTop={0}
+					paddingBottom={0}
+					backgroundColor={
+						activeIndex === 0
+							? colors.accent
+							: hoveredIndex === -10
+								? colors.accent
+								: colors.surface0
+					}
+					{...({
+						onMouseDown: () => {
+							pendingNavigationRef.current = true;
+							onSelect(0);
+						},
+						onMouseEnter: () => setHoveredIndex(-10),
+						onMouseLeave: () => setHoveredIndex(null),
+					} as Record<string, unknown>)}
+				>
+					<text
+						attributes={activeIndex === 0 ? TextAttributes.BOLD : 0}
+						fg={activeIndex === 0 ? colors.accentForeground : colors.text}
+					>
+						{showTabNumbers ? "`:" : ""}
+						{HOME_ICON} Home
+					</text>
+				</box>
+			)}
+
+			{/* Visible tool tabs */}
 			{visibleIndices.map((index, i) => {
 				const tool = tools[index];
 				if (!tool) return null;
@@ -323,6 +411,8 @@ export function TabBar({
 				// Split extra padding for center alignment
 				const extraLeft = Math.floor(extraPadding / 2);
 				const extraRight = extraPadding - extraLeft;
+				// When home is enabled, tool tabs start at index 1
+				const tabIndex = homeEnabled ? index + 1 : index;
 				return (
 					<box
 						key={`${tool.config.name}-${index}`}
@@ -330,21 +420,21 @@ export function TabBar({
 						paddingRight={2 + extraRight}
 						paddingTop={0}
 						paddingBottom={0}
-						backgroundColor={getTabBackgroundColor(index)}
+						backgroundColor={getTabBackgroundColor(tabIndex)}
 						{...({
 							onMouseDown: () => {
 								pendingNavigationRef.current = true;
-								onSelect(index);
+								onSelect(tabIndex);
 							},
-							onMouseEnter: () => setHoveredIndex(index),
+							onMouseEnter: () => setHoveredIndex(tabIndex),
 							onMouseLeave: () => setHoveredIndex(null),
 						} as Record<string, unknown>)}
 					>
 						<text
-							attributes={index === activeIndex ? TextAttributes.BOLD : 0}
-							fg={getTabTextColor(tool, index)}
+							attributes={tabIndex === activeIndex ? TextAttributes.BOLD : 0}
+							fg={getTabTextColor(tool, tabIndex)}
 						>
-							{showTabNumbers && index < 9 ? `${index + 1}:` : ""}
+							{showTabNumbers && tabIndex < 9 ? `${tabIndex + 1}:` : ""}
 							{getStatusIcon(tool.status)}
 							{truncateName(tool.config.name)}
 						</text>

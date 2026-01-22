@@ -1,6 +1,57 @@
+[home]
+enabled = true
+title = "Dev Stack"
+titleFont = "tiny"
+
 [ui]
 sidebarPosition = "left"
 horizontalTabPosition = "top"
+
+# === Health Check Test Servers ===
+[[tools]]
+name = "healthy-server"
+command = "bun"
+args = ["test-scripts/healthy-server.js"]
+cwd = "."
+cleanup = []
+description = "Always-healthy server for testing baseline behavior. This is a much longer description to see how the card layout handles text that extends beyond the typical width of a service card in the grid."
+[tools.healthCheck]
+url = "http://localhost:7771/health"
+interval = 5000
+retries = 3
+[tools.ui]
+label = "Healthy App"
+url = "http://localhost:7771"
+
+[[tools]]
+name = "slow-start"
+command = "bun"
+args = ["test-scripts/slow-start-server.js"]
+cwd = "."
+cleanup = []
+description = "Takes 10 seconds to become healthy after starting"
+[tools.healthCheck]
+url = "http://localhost:7772/health"
+interval = 3000
+retries = 5
+[tools.ui]
+label = "Slow Start App"
+url = "http://localhost:7772"
+
+[[tools]]
+name = "flaky-server"
+command = "bun"
+args = ["test-scripts/flaky-server.js"]
+cwd = "."
+cleanup = []
+description = "Alternates between healthy and unhealthy every 15s"
+[tools.healthCheck]
+url = "http://localhost:7773/health"
+interval = 5000
+retries = 2
+[tools.ui]
+label = "Flaky App"
+url = "http://localhost:7773"
 
 # === Baseline ===
 [[tools]]

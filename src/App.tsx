@@ -3,6 +3,7 @@ import { useKeyboard, useTerminalDimensions } from "@opentui/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CommandPalette, commandPalette } from "./components/CommandPalette";
 import { HelpBar, type HelpBarMode } from "./components/HelpBar";
+import { HomeTab } from "./components/HomeTab";
 import { LogViewer } from "./components/LogViewer";
 import { lineHeightCacheStore } from "./components/LogViewer/LineHeightCacheStore";
 import {
@@ -16,6 +17,7 @@ import { ToastContainer, toast } from "./components/Toast";
 import { StatusIcons } from "./constants";
 import { useToolsList } from "./hooks";
 import type { Config } from "./lib/config";
+import { HealthChecker, type HealthStateMap } from "./lib/health";
 import type { ProcessManager } from "./lib/processes";
 import { useTheme } from "./lib/theme";
 import type { ToolState } from "./types";
@@ -63,7 +65,70 @@ export function App({
 
 	// Use hook that only re-renders when tool status/logs actually change
 	const tools = useToolsList(processManager, 100);
-	const [activeIndex, setActiveIndex] = useState(0);
+
+	// Home tab configuration
+	const homeEnabled = config.home?.enabled ?? false;
+	const homeConfig = config.home ?? { enabled: false };
+
+	// Health checker for home tab
+	const healthCheckerRef = useRef<HealthChecker | null>(null);
+	const [healthStates, setHealthStates] = useState<HealthStateMap>(new Map());
+
+	// Stable reference to tool configs (only changes when config actually changes)
+	const toolConfigsRef = useRef(tools.map((t) => t.config));
+
+	// Initialize health checker - only on mount or when home is enabled
+	useEffect(() => {
+		if (!homeEnabled) return;
+
+		const checker = new HealthChecker();
+		checker.initialize(toolConfigsRef.current);
+		checker.onChange((toolName, state) => {
+			setHealthStates((prev) => {
+				const newMap = new Map(prev);
+				newMap.set(toolName, state);
+				return newMap;
+			});
+		});
+		checker.start();
+		healthCheckerRef.current = checker;
+
+		// Initialize health states from checker
+		setHealthStates(checker.getAllHealthStates());
+
+		return () => {
+			checker.stop();
+			healthCheckerRef.current = null;
+		};
+	}, [homeEnabled]);
+
+	// Watch for process status changes and trigger immediate health checks
+	const prevToolStatusesForHealthRef = useRef<Map<string, string>>(new Map());
+	useEffect(() => {
+		if (!homeEnabled || !healthCheckerRef.current) return;
+
+		for (const tool of tools) {
+			const toolName = tool.config.name;
+			const prevStatus = prevToolStatusesForHealthRef.current.get(toolName);
+			const currentStatus = tool.status;
+
+			// If status changed to running, trigger health check
+			if (prevStatus !== currentStatus && currentStatus === "running") {
+				if (tool.config.healthCheck) {
+					healthCheckerRef.current.resetHealthState(toolName);
+					// Trigger immediate check after a short delay to let process initialize
+					setTimeout(() => {
+						healthCheckerRef.current?.checkNow(toolName);
+					}, 1000);
+				}
+			}
+
+			prevToolStatusesForHealthRef.current.set(toolName, currentStatus);
+		}
+	}, [homeEnabled, tools]);
+
+	// Active index: 0 is home tab when enabled, tools start at 1
+	const [activeIndex, setActiveIndex] = useState(homeEnabled ? 0 : 0);
 	const [navigationKey, setNavigationKey] = useState(0);
 	const [tabSearchStates, setTabSearchStates] = useState<
 		Map<string, TabSearchState>
@@ -95,10 +160,17 @@ export function App({
 		[],
 	);
 
+	// Calculate tool index accounting for home tab offset
+	const isHomeTabActive = homeEnabled && activeIndex === 0;
+	const toolIndex = homeEnabled ? activeIndex - 1 : activeIndex;
+
 	// Get current tab's search state
-	const currentTool = tools[activeIndex];
+	const currentTool = toolIndex >= 0 ? tools[toolIndex] : undefined;
 	const currentToolName = currentTool?.config.name ?? "";
 	const currentSearchState = getTabSearchState(currentToolName);
+
+	// Total number of tabs (home + tools)
+	const totalTabs = homeEnabled ? tools.length + 1 : tools.length;
 
 	const widthThreshold = config.ui?.widthThreshold ?? DEFAULT_WIDTH_THRESHOLD;
 	const sidebarPosition = config.ui?.sidebarPosition ?? "left";
@@ -274,11 +346,11 @@ export function App({
 				shortcut: "r",
 				category: "Process",
 				action: () => {
-					if (currentTool) {
+					if (currentTool && toolIndex >= 0) {
 						toast.info(`Restarting ${currentToolName}...`);
 						// Update status tracking so we detect quick exits
 						prevToolStatusesRef.current.set(currentToolName, "running");
-						processManager.restartTool(activeIndex);
+						processManager.restartTool(toolIndex);
 					}
 				},
 			},
@@ -288,9 +360,13 @@ export function App({
 				shortcut: "s",
 				category: "Process",
 				action: () => {
-					if (currentTool && currentTool.status === "running") {
+					if (
+						currentTool &&
+						currentTool.status === "running" &&
+						toolIndex >= 0
+					) {
 						toast.info(`Stopping ${currentToolName}...`);
-						processManager.stopTool(activeIndex);
+						processManager.stopTool(toolIndex);
 					}
 				},
 			},
@@ -300,8 +376,8 @@ export function App({
 				shortcut: "c",
 				category: "View",
 				action: () => {
-					if (currentTool) {
-						processManager.clearLogs(activeIndex);
+					if (currentTool && toolIndex >= 0) {
+						processManager.clearLogs(toolIndex);
 						toast.info("Logs cleared");
 					}
 				},
@@ -343,17 +419,32 @@ export function App({
 
 		// Add tab switching commands for all tabs (shortcuts only for first 9)
 		// These go last so they appear at the bottom of the palette
+		// When home is enabled, home is at index 0, tools start at index 1
+		if (homeEnabled) {
+			commands.push({
+				id: "switch-tab-home",
+				label: "Switch to Home",
+				shortcut: "`",
+				category: "Tabs",
+				action: () => {
+					setNavigationKey((k) => k + 1);
+					setActiveIndex(0);
+				},
+			});
+		}
+
 		for (let i = 0; i < tools.length; i++) {
 			const tool = tools[i];
 			if (tool) {
+				const tabIndex = homeEnabled ? i + 1 : i;
 				commands.push({
 					id: `switch-tab-${i}`,
 					label: `Switch to ${tool.config.name}`,
-					shortcut: i < 9 ? `${i + 1}` : undefined,
+					shortcut: tabIndex < 9 ? `${tabIndex + 1}` : undefined,
 					category: "Tabs",
 					action: () => {
 						setNavigationKey((k) => k + 1);
-						setActiveIndex(i);
+						setActiveIndex(tabIndex);
 					},
 				});
 			}
@@ -370,7 +461,8 @@ export function App({
 		renderer,
 		currentToolName,
 		currentTool,
-		activeIndex,
+		toolIndex,
+		homeEnabled,
 		updateTabSearchState,
 		lineWrap,
 		toggleLineWrap,
@@ -453,28 +545,28 @@ export function App({
 
 		// Restart current process: r
 		if (key.name === "r") {
-			if (currentTool) {
+			if (currentTool && toolIndex >= 0) {
 				toast.info(`Restarting ${currentToolName}...`);
 				// Update status tracking so we detect quick exits
 				prevToolStatusesRef.current.set(currentToolName, "running");
-				processManager.restartTool(activeIndex);
+				processManager.restartTool(toolIndex);
 			}
 			return;
 		}
 
 		// Stop current process: s
 		if (key.name === "s") {
-			if (currentTool && currentTool.status === "running") {
+			if (currentTool && currentTool.status === "running" && toolIndex >= 0) {
 				toast.info(`Stopping ${currentToolName}...`);
-				processManager.stopTool(activeIndex);
+				processManager.stopTool(toolIndex);
 			}
 			return;
 		}
 
 		// Clear logs: c
 		if (key.name === "c") {
-			if (currentTool) {
-				processManager.clearLogs(activeIndex);
+			if (currentTool && toolIndex >= 0) {
+				processManager.clearLogs(toolIndex);
 				toast.info("Logs cleared");
 			}
 			return;
@@ -496,29 +588,35 @@ export function App({
 		// Tab navigation - increment navigationKey to signal auto-scroll should happen
 		if (key.name === "h" || key.name === "left") {
 			setNavigationKey((k) => k + 1);
-			setActiveIndex((prev) => (prev > 0 ? prev - 1 : tools.length - 1));
+			setActiveIndex((prev) => (prev > 0 ? prev - 1 : totalTabs - 1));
 		}
 		if (key.name === "l" || key.name === "right") {
 			setNavigationKey((k) => k + 1);
-			setActiveIndex((prev) => (prev < tools.length - 1 ? prev + 1 : 0));
+			setActiveIndex((prev) => (prev < totalTabs - 1 ? prev + 1 : 0));
 		}
 		if (key.name === "j" || key.name === "down") {
 			if (useVertical) {
 				setNavigationKey((k) => k + 1);
-				setActiveIndex((prev) => (prev < tools.length - 1 ? prev + 1 : 0));
+				setActiveIndex((prev) => (prev < totalTabs - 1 ? prev + 1 : 0));
 			}
 		}
 		if (key.name === "k" || key.name === "up") {
 			if (useVertical) {
 				setNavigationKey((k) => k + 1);
-				setActiveIndex((prev) => (prev > 0 ? prev - 1 : tools.length - 1));
+				setActiveIndex((prev) => (prev > 0 ? prev - 1 : totalTabs - 1));
 			}
+		}
+
+		// Backtick to switch to home tab
+		if (key.name === "`" && homeEnabled) {
+			setNavigationKey((k) => k + 1);
+			setActiveIndex(0);
 		}
 
 		// Number keys to switch tabs
 		if (key.number && key.name) {
 			const num = parseInt(key.name, 10);
-			if (num >= 1 && num <= tools.length) {
+			if (num >= 1 && num <= totalTabs) {
 				setNavigationKey((k) => k + 1);
 				setActiveIndex(num - 1);
 			}
@@ -537,9 +635,18 @@ export function App({
 	});
 
 	// Find the active tool index in the filtered list
+	// Account for home tab offset when calculating display index
 	const activeToolIndex = currentTool ? activeTools.indexOf(currentTool) : -1;
-	const displayActiveIndex = activeToolIndex >= 0 ? activeToolIndex : 0;
-	const activeTool = activeTools[displayActiveIndex];
+	const displayActiveIndex = homeEnabled
+		? isHomeTabActive
+			? 0
+			: activeToolIndex + 1
+		: activeToolIndex >= 0
+			? activeToolIndex
+			: 0;
+	const activeTool = isHomeTabActive
+		? undefined
+		: activeTools[activeToolIndex >= 0 ? activeToolIndex : 0];
 
 	// During shutdown, ensure active tab stays valid as tabs are removed
 	useEffect(() => {
@@ -566,11 +673,18 @@ export function App({
 			tools={activeTools}
 			activeIndex={displayActiveIndex}
 			onSelect={(idx) => {
-				const tool = activeTools[idx];
+				// When home is enabled, index 0 is home tab
+				if (homeEnabled && idx === 0) {
+					setActiveIndex(0);
+					return;
+				}
+				// Adjust for home tab offset
+				const toolIdx = homeEnabled ? idx - 1 : idx;
+				const tool = activeTools[toolIdx];
 				if (tool) {
 					const originalIndex = tools.indexOf(tool);
 					if (originalIndex >= 0) {
-						setActiveIndex(originalIndex);
+						setActiveIndex(homeEnabled ? originalIndex + 1 : originalIndex);
 					}
 				}
 			}}
@@ -579,10 +693,40 @@ export function App({
 			width={terminalWidth}
 			showTabNumbers={showTabNumbers}
 			navigationKey={navigationKey}
+			homeEnabled={homeEnabled}
 		/>
 	);
 
-	const logViewerComponent = activeTool ? (
+	// Main content area - show HomeTab or LogViewer based on active tab
+	const mainContentComponent = isHomeTabActive ? (
+		<HomeTab
+			tools={tools}
+			healthStates={healthStates}
+			config={homeConfig}
+			theme={theme}
+			sidebarWidth={sidebarWidth}
+			onToolSelect={(idx) => {
+				// Switch to the selected tool's tab
+				setNavigationKey((k) => k + 1);
+				setActiveIndex(homeEnabled ? idx + 1 : idx);
+			}}
+			onRestartTool={(idx) => {
+				const tool = tools[idx];
+				if (tool) {
+					toast.info(`Restarting ${tool.config.name}...`);
+					prevToolStatusesRef.current.set(tool.config.name, "running");
+					processManager.restartTool(idx);
+				}
+			}}
+			onStopTool={(idx) => {
+				const tool = tools[idx];
+				if (tool && tool.status === "running") {
+					toast.info(`Stopping ${tool.config.name}...`);
+					processManager.stopTool(idx);
+				}
+			}}
+		/>
+	) : activeTool ? (
 		<LogViewer
 			tool={activeTool}
 			theme={theme}
@@ -675,7 +819,7 @@ export function App({
 					width="100%"
 				>
 					{sidebarPosition === "left" && tabBarComponent}
-					{logViewerComponent}
+					{mainContentComponent}
 					{sidebarPosition === "right" && tabBarComponent}
 				</box>
 			) : (
@@ -689,7 +833,7 @@ export function App({
 					width="100%"
 				>
 					{horizontalTabPosition === "top" && tabBarComponent}
-					{logViewerComponent}
+					{mainContentComponent}
 					{horizontalTabPosition === "bottom" && tabBarComponent}
 				</box>
 			)}

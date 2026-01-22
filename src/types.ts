@@ -1,3 +1,21 @@
+/** Health check configuration for a tool */
+export interface ToolHealthCheck {
+	/** URL to ping for health status */
+	url: string;
+	/** Interval between checks in milliseconds. Default: 10000 */
+	interval?: number;
+	/** Number of retries before declaring unhealthy. Default: 3 */
+	retries?: number;
+}
+
+/** UI link configuration for a tool */
+export interface ToolUI {
+	/** Display label for the UI button */
+	label: string;
+	/** URL to open */
+	url: string;
+}
+
 export interface ToolConfig {
 	name: string;
 	command: string;
@@ -5,6 +23,12 @@ export interface ToolConfig {
 	cwd?: string;
 	env?: Record<string, string>;
 	cleanup?: string[];
+	/** Optional description shown on the homepage */
+	description?: string;
+	/** Optional health check configuration */
+	healthCheck?: ToolHealthCheck;
+	/** Optional UI link configuration */
+	ui?: ToolUI;
 }
 
 export interface TextSegment {
@@ -31,4 +55,16 @@ export interface ToolState {
 	exitCode: number | null;
 	pid?: number; // Process ID for persistence
 	startTime?: number; // Unix timestamp when process started
+}
+
+/** Health check status for a tool */
+export type HealthStatus = "starting" | "healthy" | "unhealthy";
+
+/** Health state for a tool including retry tracking */
+export interface ToolHealthState {
+	status: HealthStatus;
+	/** Number of consecutive failures (for retry logic) */
+	failureCount: number;
+	/** Timestamp of last check */
+	lastCheck?: number;
 }

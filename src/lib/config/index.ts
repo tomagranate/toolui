@@ -1,2 +1,2 @@
 export { loadConfig } from "./config";
-export type { Config } from "./types";
+export type { ASCIIFontName, Config, HomeConfig } from "./types";

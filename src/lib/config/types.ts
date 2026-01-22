@@ -1,7 +1,29 @@
 import type { ToolConfig } from "../../types";
 
+/** ASCII font options for the home tab title */
+export type ASCIIFontName =
+	| "tiny"
+	| "block"
+	| "shade"
+	| "slick"
+	| "huge"
+	| "grid"
+	| "pallet";
+
+/** Home tab configuration */
+export interface HomeConfig {
+	/** Whether the home tab is enabled. Default: false */
+	enabled?: boolean;
+	/** Title text displayed in ASCII art. Default: "Home" */
+	title?: string;
+	/** ASCII font for the title. Default: "tiny" */
+	titleFont?: ASCIIFontName;
+}
+
 export interface Config {
 	tools: ToolConfig[];
+	/** Home tab configuration */
+	home?: HomeConfig;
 	ui?: {
 		/** Sidebar position for wide terminals: "left" or "right". Default: "left" */
 		sidebarPosition?: "left" | "right";
