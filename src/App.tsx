@@ -244,6 +244,8 @@ export function App({
 				action: () => {
 					if (currentTool) {
 						toast.info(`Restarting ${currentToolName}...`);
+						// Update status tracking so we detect quick exits
+						prevToolStatusesRef.current.set(currentToolName, "running");
 						processManager.restartTool(activeIndex);
 					}
 				},
@@ -419,6 +421,8 @@ export function App({
 		if (key.name === "r") {
 			if (currentTool) {
 				toast.info(`Restarting ${currentToolName}...`);
+				// Update status tracking so we detect quick exits
+				prevToolStatusesRef.current.set(currentToolName, "running");
 				processManager.restartTool(activeIndex);
 			}
 			return;
