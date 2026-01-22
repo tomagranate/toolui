@@ -237,6 +237,42 @@ export function App({
 				action: toggleLineWrap,
 			},
 			{
+				id: "restart-process",
+				label: "Restart current process",
+				shortcut: "r",
+				category: "Process",
+				action: () => {
+					if (currentTool) {
+						toast.info(`Restarting ${currentToolName}...`);
+						processManager.restartTool(activeIndex);
+					}
+				},
+			},
+			{
+				id: "stop-process",
+				label: "Stop current process",
+				shortcut: "s",
+				category: "Process",
+				action: () => {
+					if (currentTool && currentTool.status === "running") {
+						toast.info(`Stopping ${currentToolName}...`);
+						processManager.stopTool(activeIndex);
+					}
+				},
+			},
+			{
+				id: "clear-logs",
+				label: "Clear logs",
+				shortcut: "c",
+				category: "View",
+				action: () => {
+					if (currentTool) {
+						processManager.clearLogs(activeIndex);
+						toast.info("Logs cleared");
+					}
+				},
+			},
+			{
 				id: "toggle-console",
 				label: "Toggle debug console",
 				category: "View",
@@ -299,6 +335,8 @@ export function App({
 		processManager,
 		renderer,
 		currentToolName,
+		currentTool,
+		activeIndex,
 		updateTabSearchState,
 		lineWrap,
 		toggleLineWrap,
@@ -374,6 +412,33 @@ export function App({
 		// Toggle line wrapping: w
 		if (key.name === "w") {
 			toggleLineWrap();
+			return;
+		}
+
+		// Restart current process: r
+		if (key.name === "r") {
+			if (currentTool) {
+				toast.info(`Restarting ${currentToolName}...`);
+				processManager.restartTool(activeIndex);
+			}
+			return;
+		}
+
+		// Stop current process: s
+		if (key.name === "s") {
+			if (currentTool && currentTool.status === "running") {
+				toast.info(`Stopping ${currentToolName}...`);
+				processManager.stopTool(activeIndex);
+			}
+			return;
+		}
+
+		// Clear logs: c
+		if (key.name === "c") {
+			if (currentTool) {
+				processManager.clearLogs(activeIndex);
+				toast.info("Logs cleared");
+			}
 			return;
 		}
 

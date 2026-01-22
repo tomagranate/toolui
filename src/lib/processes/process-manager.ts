@@ -190,6 +190,48 @@ export class ProcessManager {
 		}
 	}
 
+	async restartTool(index: number): Promise<void> {
+		const tool = this.tools[index];
+		if (!tool) return;
+
+		// If running, stop first (graceful with force kill on timeout)
+		if (
+			tool.process &&
+			(tool.status === "running" || tool.status === "shuttingDown")
+		) {
+			try {
+				tool.process.kill("SIGTERM");
+				const timeout = new Promise((resolve) => setTimeout(resolve, 3000));
+				const exitPromise = tool.process.exited;
+
+				await Promise.race([exitPromise, timeout]);
+
+				// Force kill if still running after timeout
+				if (tool.process && !tool.process.killed) {
+					tool.process.kill("SIGKILL");
+					await tool.process.exited;
+				}
+			} catch (_error) {
+				// Ignore errors during stop
+			}
+
+			tool.process = null;
+			tool.pid = undefined;
+			tool.startTime = undefined;
+			await removePidFromFile(index);
+		}
+
+		// Start fresh
+		await this.startTool(index);
+	}
+
+	clearLogs(index: number): void {
+		const tool = this.tools[index];
+		if (tool) {
+			tool.logs = [];
+		}
+	}
+
 	async cleanup(): Promise<void> {
 		// Set shutdown state
 		this.isShuttingDown = true;

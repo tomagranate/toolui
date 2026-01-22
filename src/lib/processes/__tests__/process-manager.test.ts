@@ -288,4 +288,100 @@ describe("ProcessManager", () => {
 
 		await manager.cleanup();
 	});
+
+	test("restartTool - restarts a running process", async () => {
+		const configs: ToolConfig[] = [
+			{
+				name: "test",
+				command: "sleep",
+				args: ["10"],
+			},
+		];
+
+		await processManager.initialize(configs);
+		await processManager.startTool(0);
+
+		const firstPid = processManager.getTool(0)?.pid;
+		expect(firstPid).toBeDefined();
+		expect(processManager.getTool(0)?.status).toBe("running");
+
+		await processManager.restartTool(0);
+
+		const tool = processManager.getTool(0);
+		expect(tool?.status).toBe("running");
+		expect(tool?.pid).toBeDefined();
+		// Should be a new process with different PID
+		expect(tool?.pid).not.toBe(firstPid);
+	});
+
+	test("restartTool - starts a stopped process", async () => {
+		const configs: ToolConfig[] = [
+			{
+				name: "test",
+				command: "sleep",
+				args: ["10"],
+			},
+		];
+
+		await processManager.initialize(configs);
+		// Don't start the process first - it should be stopped
+
+		expect(processManager.getTool(0)?.status).toBe("stopped");
+
+		await processManager.restartTool(0);
+
+		const tool = processManager.getTool(0);
+		expect(tool?.status).toBe("running");
+		expect(tool?.pid).toBeDefined();
+	});
+
+	test("restartTool - handles invalid index", async () => {
+		const configs: ToolConfig[] = [
+			{
+				name: "test",
+				command: "echo",
+			},
+		];
+
+		await processManager.initialize(configs);
+		// Should not throw
+		await expect(processManager.restartTool(999)).resolves.toBeUndefined();
+	});
+
+	test("clearLogs - clears logs for a tool", async () => {
+		const configs: ToolConfig[] = [
+			{
+				name: "test",
+				command: "echo",
+				args: ["test output"],
+			},
+		];
+
+		await processManager.initialize(configs);
+		await processManager.startTool(0);
+
+		// Wait for process to complete and collect logs
+		await waitForProcessExit(processManager, 0);
+
+		const toolBefore = processManager.getTool(0);
+		expect(toolBefore?.logs?.length).toBeGreaterThan(0);
+
+		processManager.clearLogs(0);
+
+		const toolAfter = processManager.getTool(0);
+		expect(toolAfter?.logs).toEqual([]);
+	});
+
+	test("clearLogs - handles invalid index", async () => {
+		const configs: ToolConfig[] = [
+			{
+				name: "test",
+				command: "echo",
+			},
+		];
+
+		await processManager.initialize(configs);
+		// Should not throw
+		expect(() => processManager.clearLogs(999)).not.toThrow();
+	});
 });

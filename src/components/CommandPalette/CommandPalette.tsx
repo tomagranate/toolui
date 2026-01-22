@@ -9,6 +9,9 @@ import { type Command, commandPalette } from "./command-palette-store";
 const KEYBOARD_SHORTCUTS = [
 	{ key: "Ctrl+P", description: "Open command palette" },
 	{ key: "?", description: "Show keyboard shortcuts" },
+	{ key: "r", description: "Restart process" },
+	{ key: "s", description: "Stop process" },
+	{ key: "c", description: "Clear logs" },
 	{ key: "j/k", description: "Switch tabs (vertical layout)" },
 	{ key: "h/l", description: "Switch tabs (horizontal layout)" },
 	{ key: "1-9", description: "Jump to tab by number" },

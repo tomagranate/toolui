@@ -75,7 +75,6 @@ function getHintsForMode(mode: HelpBarMode): HintItem[] {
 					compactAction: "keys",
 				},
 				{ key: "/", compactKey: "/", action: "search", compactAction: "find" },
-				{ key: "q", compactKey: "q", action: "quit", compactAction: "quit" },
 			];
 		}
 	}
