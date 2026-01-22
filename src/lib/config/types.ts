@@ -11,7 +11,7 @@ export interface Config {
 		widthThreshold?: number;
 		/**
 		 * Theme name. Options:
-		 * - "default", "dracula", "nord", "onedark", "solarized", "gruvbox", "catppuccin" - Built-in themes
+		 * - "default" (Moss), "mist", "cappuccino", "synthwave" - Built-in themes
 		 * - "terminal" - Automatically detect colors from your terminal (supports Ghostty, iTerm2, Kitty, and other xterm-compatible terminals)
 		 * Default: "default"
 		 */

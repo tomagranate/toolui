@@ -36,16 +36,6 @@ export function ThemePicker({ isOpen, onClose }: ThemePickerProps) {
 	const modalWidth = Math.min(40, terminalWidth - 4);
 	const maxListHeight = Math.min(themeEntries.length + 1, terminalHeight - 6);
 
-	// Set selected index to current theme when picker opens
-	useEffect(() => {
-		if (isOpen && !wasOpenRef.current) {
-			// Just opened - set selected index to current theme
-			const currentIndex = themeEntries.findIndex(([key]) => key === themeKey);
-			setSelectedIndex(currentIndex >= 0 ? currentIndex : 0);
-		}
-		wasOpenRef.current = isOpen;
-	}, [isOpen, themeKey, themeEntries]);
-
 	// Scroll to keep selected item visible
 	const scrollToSelected = useCallback((index: number) => {
 		const scrollbox = scrollboxRef.current;
@@ -60,6 +50,19 @@ export function ThemePicker({ isOpen, onClose }: ThemePickerProps) {
 			scrollbox.scrollTo(index - viewportHeight + 1);
 		}
 	}, []);
+
+	// Set selected index to current theme when picker opens and scroll to it
+	useEffect(() => {
+		if (isOpen && !wasOpenRef.current) {
+			// Just opened - set selected index to current theme
+			const currentIndex = themeEntries.findIndex(([key]) => key === themeKey);
+			const newIndex = currentIndex >= 0 ? currentIndex : 0;
+			setSelectedIndex(newIndex);
+			// Scroll to make current theme visible (use setTimeout to let render complete)
+			setTimeout(() => scrollToSelected(newIndex), 0);
+		}
+		wasOpenRef.current = isOpen;
+	}, [isOpen, themeKey, themeEntries, scrollToSelected]);
 
 	// Handle theme selection (preview on navigate, save on Enter)
 	const handleNavigate = useCallback(

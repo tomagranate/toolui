@@ -5,38 +5,37 @@ import { buildTerminalTheme, getTheme, mapAnsiColor, themes } from "../themes";
 describe("getTheme", () => {
 	test("returns default theme when called without argument", () => {
 		const theme = getTheme();
-		expect(theme.name).toBe("Default");
-		expect(theme.colors.surface0).toBe("#000000");
-		expect(theme.colors.text).toBe("#ffffff");
-		expect(theme.colors.success).toBe("#00ff00");
-		expect(theme.colors.error).toBe("#ff0000");
+		expect(theme.name).toBe("Moss");
+		expect(theme.colors.surface0).toBe("#0f1214");
+		expect(theme.colors.text).toBe("#c8d0d8");
+		expect(theme.colors.accent).toBe("#2d6b52"); // Deep British racing green
 	});
 
 	test("returns default theme when called with 'default'", () => {
 		const theme = getTheme("default");
-		expect(theme.name).toBe("Default");
-		expect(theme.colors.surface0).toBe("#000000");
+		expect(theme.name).toBe("Moss");
+		expect(theme.colors.surface0).toBe("#0f1214");
 	});
 
 	test("returns correct theme when called with valid theme name", () => {
-		const dracula = getTheme("dracula");
-		expect(dracula.name).toBe("Dracula");
-		expect(dracula.colors.surface0).toBe("#282a36");
+		const mist = getTheme("mist");
+		expect(mist.name).toBe("Mist");
+		expect(mist.colors.surface0).toBe("#ffffff");
 
-		const nord = getTheme("nord");
-		expect(nord.name).toBe("Nord");
-		expect(nord.colors.surface0).toBe("#2e3440");
+		const synthwave = getTheme("synthwave");
+		expect(synthwave.name).toBe("Synthwave");
+		expect(synthwave.colors.surface0).toBe("#16141e");
 	});
 
 	test("falls back to default theme for invalid theme name", () => {
 		const theme = getTheme("invalid-theme-name");
-		expect(theme.name).toBe("Default");
-		expect(theme.colors.surface0).toBe("#000000");
+		expect(theme.name).toBe("Moss");
+		expect(theme.colors.surface0).toBe("#0f1214");
 	});
 
 	test("all themes have all required color properties", () => {
 		const themeNames = Object.keys(themes);
-		expect(themeNames.length).toBeGreaterThanOrEqual(7);
+		expect(themeNames.length).toBeGreaterThanOrEqual(5); // terminal, default, light, cappuccino, synthwave
 
 		for (const themeName of themeNames) {
 			const theme = getTheme(themeName);

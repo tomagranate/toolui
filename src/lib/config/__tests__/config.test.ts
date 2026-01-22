@@ -61,7 +61,7 @@ args = ["-la"]
 [ui]
 sidebarPosition = "right"
 widthThreshold = 120
-theme = "dracula"
+theme = "synthwave"
 
 [[tools]]
 name = "test"
@@ -74,7 +74,7 @@ command = "echo"
 			const config = await loadConfig(configPath);
 			expect(config.ui?.sidebarPosition).toBe("right");
 			expect(config.ui?.widthThreshold).toBe(120);
-			expect(config.ui?.theme).toBe("dracula");
+			expect(config.ui?.theme).toBe("synthwave");
 		} finally {
 			await unlink(configPath).catch(() => {});
 		}

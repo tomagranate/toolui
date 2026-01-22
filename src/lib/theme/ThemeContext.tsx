@@ -11,7 +11,7 @@ import { getTheme, type Theme } from "./themes";
 interface ThemeContextValue {
 	/** Current theme object */
 	theme: Theme;
-	/** Current theme key (e.g., "dracula", "nord") */
+	/** Current theme key (e.g., "default", "synthwave") */
 	themeKey: string;
 	/** Preview a theme (doesn't save to preferences) */
 	previewTheme: (themeKey: string) => void;

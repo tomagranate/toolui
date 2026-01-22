@@ -35,22 +35,23 @@ export interface Theme {
 	};
 }
 
+// Moss: Dark mode with deep greens and British racing green accent
 const DEFAULT_THEME: Theme = {
-	name: "Default",
+	name: "Moss",
 	colors: {
-		surface0: "#000000",
-		surface1: "#1a1a1a",
-		surface2: "#2a2a2a",
-		text: "#ffffff",
-		textDim: "#aaaaaa",
-		textMuted: "#666666",
-		accent: "#333333",
-		success: "#00ff00",
-		warning: "#ffff00",
-		error: "#ff0000",
-		accentForeground: "#ffffff",
-		warningForeground: "#000000",
-		selectionBackground: "#333333",
+		surface0: "#0f1214", // Darker charcoal base
+		surface1: "#1a1f22", // Slightly elevated
+		surface2: "#262d31", // Overlay/modal
+		text: "#c8d0d8", // Soft white with slight green tint
+		textDim: "#8a9ba5", // Muted
+		textMuted: "#4a5860", // Very muted
+		accent: "#2d6b52", // Deep British racing green
+		success: "#5cb885", // Vibrant but not harsh green
+		warning: "#d4a645", // Warm gold
+		error: "#c75f5f", // Muted red
+		accentForeground: "#e0f0ea",
+		warningForeground: "#0f1214",
+		selectionBackground: "#2a3a35",
 	},
 };
 
@@ -62,112 +63,64 @@ export const themes: Record<string, Theme> = {
 		colors: DEFAULT_THEME.colors,
 	},
 	default: DEFAULT_THEME,
-	dracula: {
-		name: "Dracula",
+
+	// Mist: Cool light mode with blue tints
+	mist: {
+		name: "Mist",
 		colors: {
-			surface0: "#282a36",
-			surface1: "#44475a",
-			surface2: "#6272a4",
-			text: "#f8f8f2",
-			textDim: "#bfbfca",
-			textMuted: "#6272a4",
-			accent: "#bd93f9",
-			success: "#50fa7b",
-			warning: "#f1fa8c",
-			error: "#ff5555",
-			accentForeground: "#282a36",
-			warningForeground: "#282a36",
-			selectionBackground: "#44475a",
+			surface0: "#ffffff", // Pure white base
+			surface1: "#e8edf2", // Light blue-gray
+			surface2: "#d0d8e0", // Medium blue-gray for modals
+			text: "#1a2530", // Dark blue-black text
+			textDim: "#4a5a6a", // Medium blue-gray text
+			textMuted: "#8a9aaa", // Muted blue-gray
+			accent: "#4a7a9a", // Soft steel blue
+			success: "#3a8a6a", // Teal green
+			warning: "#a08030", // Muted gold
+			error: "#a04545", // Muted red
+			accentForeground: "#ffffff",
+			warningForeground: "#1a2530",
+			selectionBackground: "#c5d5e5",
 		},
 	},
-	nord: {
-		name: "Nord",
+
+	// Cappuccino: Coffee-inspired with rich browns
+	cappuccino: {
+		name: "Cappuccino",
 		colors: {
-			surface0: "#2e3440",
-			surface1: "#3b4252",
-			surface2: "#434c5e",
-			text: "#eceff4",
-			textDim: "#d8dee9",
-			textMuted: "#4c566a",
-			accent: "#5e81ac",
-			success: "#a3be8c",
-			warning: "#ebcb8b",
-			error: "#bf616a",
-			accentForeground: "#eceff4",
-			warningForeground: "#2e3440",
-			selectionBackground: "#3b4252",
+			surface0: "#1a1410", // Dark roasted bean
+			surface1: "#2c2018", // Espresso - browner
+			surface2: "#382e26", // Coffee with cream
+			text: "#f0e8e0", // Milk foam
+			textDim: "#c0b0a0", // Steamed milk
+			textMuted: "#705848", // Coffee grounds
+			accent: "#c8b090", // Creamy latte
+			success: "#70a068", // Mint leaf
+			warning: "#c09050", // Caramel drizzle
+			error: "#a05040", // Cinnamon
+			accentForeground: "#1a1410",
+			warningForeground: "#1a1410",
+			selectionBackground: "#403028",
 		},
 	},
-	onedark: {
-		name: "One Dark",
+
+	// Synthwave: Cyberpunk aesthetic with softer neons
+	synthwave: {
+		name: "Synthwave",
 		colors: {
-			surface0: "#282c34",
-			surface1: "#3e4451",
-			surface2: "#4b5263",
-			text: "#abb2bf",
-			textDim: "#848b98",
-			textMuted: "#5c6370",
-			accent: "#61afef",
-			success: "#98c379",
-			warning: "#e5c07b",
-			error: "#e06c75",
-			accentForeground: "#282c34",
-			warningForeground: "#282c34",
-			selectionBackground: "#3e4451",
-		},
-	},
-	solarized: {
-		name: "Solarized Dark",
-		colors: {
-			surface0: "#002b36",
-			surface1: "#073642",
-			surface2: "#586e75",
-			text: "#839496",
-			textDim: "#93a1a1",
-			textMuted: "#586e75",
-			accent: "#268bd2",
-			success: "#859900",
-			warning: "#b58900",
-			error: "#dc322f",
-			accentForeground: "#fdf6e3",
-			warningForeground: "#002b36",
-			selectionBackground: "#073642",
-		},
-	},
-	gruvbox: {
-		name: "Gruvbox",
-		colors: {
-			surface0: "#282828",
-			surface1: "#3c3836",
-			surface2: "#504945",
-			text: "#ebdbb2",
-			textDim: "#bdae93",
-			textMuted: "#928374",
-			accent: "#fe8019",
-			success: "#b8bb26",
-			warning: "#fabd2f",
-			error: "#fb4934",
-			accentForeground: "#282828",
-			warningForeground: "#282828",
-			selectionBackground: "#3c3836",
-		},
-	},
-	catppuccin: {
-		name: "Catppuccin Mocha",
-		colors: {
-			surface0: "#1e1e2e",
-			surface1: "#313244",
-			surface2: "#45475a",
-			text: "#cdd6f4",
-			textDim: "#a6adc8",
-			textMuted: "#6c7086",
-			accent: "#cba6f7",
-			success: "#a6e3a1",
-			warning: "#f9e2af",
-			error: "#f38ba8",
-			accentForeground: "#1e1e2e",
-			warningForeground: "#1e1e2e",
-			selectionBackground: "#313244",
+			surface0: "#16141e", // Deep purple-black
+			surface1: "#201c30", // Dark purple
+			surface2: "#2c2842", // Muted purple
+			text: "#d8c8e8", // Soft lavender
+			textDim: "#9a8ab0", // Muted lavender
+			textMuted: "#5a4a70", // Dark lavender
+			accent: "#c8508a", // Softened pink
+			success: "#50c8a8", // Muted cyan
+			warning: "#d8b848", // Softer gold
+			error: "#c85858", // Muted coral
+			accentForeground: "#f8f0ff",
+			warningForeground: "#16141e",
+			selectionBackground: "#382e58",
 		},
 	},
 };

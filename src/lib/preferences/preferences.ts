@@ -6,7 +6,7 @@ import * as path from "node:path";
  * User preferences that persist across sessions.
  */
 export interface Preferences {
-	/** Selected theme name (e.g., "dracula", "nord") */
+	/** Selected theme name (e.g., "default", "synthwave") */
 	theme?: string;
 	/** Whether to wrap long lines (default: true) */
 	lineWrap?: boolean;
