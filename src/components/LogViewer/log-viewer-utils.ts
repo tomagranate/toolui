@@ -668,3 +668,78 @@ export function highlightSegmentsWithSearch(
 
 	return result;
 }
+
+/**
+ * Overlay fuzzy search highlighting on styled text segments.
+ * Uses character indices for highlighting (fuzzy matches individual chars, not substrings).
+ * Match characters get isMatch: true for special highlighting.
+ */
+export function highlightSegmentsWithFuzzyIndices(
+	segments: TextSegment[],
+	highlightIndices: number[],
+): StyledHighlightSegment[] {
+	if (highlightIndices.length === 0 || segments.length === 0) {
+		return segments.map((seg) => ({
+			text: seg.text,
+			color: seg.color,
+			bgColor: seg.bgColor,
+			colorIndex: seg.colorIndex,
+			bgColorIndex: seg.bgColorIndex,
+			attributes: seg.attributes,
+			isMatch: false,
+		}));
+	}
+
+	// Create a Set for O(1) lookup of highlighted positions
+	const highlightSet = new Set(highlightIndices);
+	const result: StyledHighlightSegment[] = [];
+
+	// Walk through each segment character by character
+	let globalPos = 0;
+
+	for (const segment of segments) {
+		let localStart = 0;
+		let currentIsMatch = highlightSet.has(globalPos);
+
+		for (let i = 0; i < segment.text.length; i++) {
+			const absPos = globalPos + i;
+			const isMatch = highlightSet.has(absPos);
+
+			if (isMatch !== currentIsMatch) {
+				// State changed, push current segment portion
+				const text = segment.text.substring(localStart, i);
+				if (text.length > 0) {
+					result.push({
+						text,
+						color: segment.color,
+						bgColor: segment.bgColor,
+						colorIndex: segment.colorIndex,
+						bgColorIndex: segment.bgColorIndex,
+						attributes: segment.attributes,
+						isMatch: currentIsMatch,
+					});
+				}
+				localStart = i;
+				currentIsMatch = isMatch;
+			}
+		}
+
+		// Push remaining text in segment
+		const remainingText = segment.text.substring(localStart);
+		if (remainingText.length > 0) {
+			result.push({
+				text: remainingText,
+				color: segment.color,
+				bgColor: segment.bgColor,
+				colorIndex: segment.colorIndex,
+				bgColorIndex: segment.bgColorIndex,
+				attributes: segment.attributes,
+				isMatch: currentIsMatch,
+			});
+		}
+
+		globalPos += segment.text.length;
+	}
+
+	return result;
+}

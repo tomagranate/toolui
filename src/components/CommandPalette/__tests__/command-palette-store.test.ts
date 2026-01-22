@@ -143,9 +143,11 @@ describe("CommandPaletteStore", () => {
 			]);
 		});
 
-		test("returns all commands for empty query", () => {
+		test("returns all commands with highlights for empty query", () => {
 			const filtered = commandPalette.filterCommands("");
 			expect(filtered).toHaveLength(3);
+			// Empty query returns empty highlights
+			expect(filtered[0]?.highlights).toEqual([]);
 		});
 
 		test("returns all commands for whitespace-only query", () => {
@@ -153,32 +155,35 @@ describe("CommandPaletteStore", () => {
 			expect(filtered).toHaveLength(3);
 		});
 
-		test("filters by label (case-insensitive)", () => {
+		test("filters by label using fuzzy search", () => {
 			const filtered = commandPalette.filterCommands("search");
 			expect(filtered).toHaveLength(1);
-			expect(filtered[0]?.id).toBe("search");
+			expect(filtered[0]?.command.id).toBe("search");
+			// Should have highlight indices for the matched characters
+			expect(filtered[0]?.highlights.length).toBeGreaterThan(0);
 		});
 
-		test("filters by label with mixed case", () => {
+		test("filters by label with mixed case (case-insensitive)", () => {
 			const filtered = commandPalette.filterCommands("QUIT");
 			expect(filtered).toHaveLength(1);
-			expect(filtered[0]?.id).toBe("quit");
+			expect(filtered[0]?.command.id).toBe("quit");
 		});
 
 		test("filters by partial match", () => {
 			const filtered = commandPalette.filterCommands("log");
 			expect(filtered).toHaveLength(1);
-			expect(filtered[0]?.id).toBe("search");
+			expect(filtered[0]?.command.id).toBe("search");
 		});
 
-		test("filters by category", () => {
-			const filtered = commandPalette.filterCommands("navigation");
-			expect(filtered).toHaveLength(1);
-			expect(filtered[0]?.id).toBe("search");
+		test("fuzzy matches non-contiguous characters", () => {
+			// "sl" should fuzzy match "Search logs" (S...l)
+			const filtered = commandPalette.filterCommands("sl");
+			expect(filtered.length).toBeGreaterThan(0);
+			expect(filtered.some((f) => f.command.id === "search")).toBe(true);
 		});
 
 		test("returns empty array when no matches", () => {
-			const filtered = commandPalette.filterCommands("nonexistent");
+			const filtered = commandPalette.filterCommands("xyz123");
 			expect(filtered).toHaveLength(0);
 		});
 	});

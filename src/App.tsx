@@ -25,6 +25,7 @@ interface TabSearchState {
 	searchMode: boolean;
 	searchQuery: string;
 	filterMode: boolean;
+	fuzzyMode: boolean;
 	currentMatchIndex: number;
 }
 
@@ -32,6 +33,7 @@ const DEFAULT_SEARCH_STATE: TabSearchState = {
 	searchMode: false,
 	searchQuery: "",
 	filterMode: true, // Default ON per requirements
+	fuzzyMode: true, // Default ON - fuzzy search enabled
 	currentMatchIndex: 0,
 };
 
@@ -230,6 +232,36 @@ export function App({
 				},
 			},
 			{
+				id: "toggle-fuzzy-search",
+				label: currentSearchState.fuzzyMode
+					? "Switch to substring search"
+					: "Switch to fuzzy search",
+				shortcut: "Ctrl+F",
+				category: "Search",
+				action: () => {
+					if (currentToolName) {
+						updateTabSearchState(currentToolName, {
+							fuzzyMode: !currentSearchState.fuzzyMode,
+						});
+					}
+				},
+			},
+			{
+				id: "toggle-filter-mode",
+				label: currentSearchState.filterMode
+					? "Disable filter mode"
+					: "Enable filter mode",
+				shortcut: "Ctrl+H",
+				category: "Search",
+				action: () => {
+					if (currentToolName) {
+						updateTabSearchState(currentToolName, {
+							filterMode: !currentSearchState.filterMode,
+						});
+					}
+				},
+			},
+			{
 				id: "toggle-line-wrap",
 				label: lineWrap ? "Disable line wrapping" : "Enable line wrapping",
 				shortcut: "w",
@@ -343,6 +375,8 @@ export function App({
 		lineWrap,
 		toggleLineWrap,
 		toggleConsole,
+		currentSearchState.fuzzyMode,
+		currentSearchState.filterMode,
 	]);
 
 	// Handle keyboard input
@@ -394,14 +428,14 @@ export function App({
 			return;
 		}
 
-		// Skip most key handling when in search mode (LogViewer handles it)
-		if (currentSearchState.searchMode) {
+		// Command palette shortcut: Ctrl+P or Ctrl+K (works even in search mode)
+		if (key.ctrl && (key.name === "p" || key.name === "k")) {
+			setCommandPaletteOpen(true);
 			return;
 		}
 
-		// Command palette shortcut: Ctrl+P or Ctrl+K
-		if (key.ctrl && (key.name === "p" || key.name === "k")) {
-			setCommandPaletteOpen(true);
+		// Skip most key handling when in search mode (LogViewer handles it)
+		if (currentSearchState.searchMode) {
 			return;
 		}
 
@@ -555,6 +589,7 @@ export function App({
 			searchMode={currentSearchState.searchMode}
 			searchQuery={currentSearchState.searchQuery}
 			filterMode={currentSearchState.filterMode}
+			fuzzyMode={currentSearchState.fuzzyMode}
 			currentMatchIndex={currentSearchState.currentMatchIndex}
 			onSearchModeChange={(active) =>
 				updateTabSearchState(activeTool.config.name, { searchMode: active })
@@ -567,6 +602,9 @@ export function App({
 			}
 			onFilterModeChange={(filter) =>
 				updateTabSearchState(activeTool.config.name, { filterMode: filter })
+			}
+			onFuzzyModeChange={(fuzzy) =>
+				updateTabSearchState(activeTool.config.name, { fuzzyMode: fuzzy })
 			}
 			onCurrentMatchIndexChange={(index) =>
 				updateTabSearchState(activeTool.config.name, {
@@ -627,6 +665,7 @@ export function App({
 			)}
 			{useVertical ? (
 				// Vertical layout: sidebar on left or right
+				// No gap here - LogViewer handles its own left margin for content
 				<box
 					key="layout-vertical"
 					flexDirection="row"
@@ -634,7 +673,6 @@ export function App({
 					flexShrink={1}
 					flexBasis={0}
 					width="100%"
-					gap={1}
 				>
 					{sidebarPosition === "left" && tabBarComponent}
 					{logViewerComponent}

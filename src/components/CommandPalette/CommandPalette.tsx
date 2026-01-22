@@ -1,6 +1,7 @@
 import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { calculateFuzzyHighlightSegments } from "../../lib/search";
 import type { Theme } from "../../lib/theme";
 import { TextInput } from "../TextInput";
 import { type Command, commandPalette } from "./command-palette-store";
@@ -16,6 +17,8 @@ const KEYBOARD_SHORTCUTS = [
 	{ key: "h/l", description: "Switch tabs (horizontal layout)" },
 	{ key: "1-9", description: "Jump to tab by number" },
 	{ key: "/", description: "Search logs" },
+	{ key: "Ctrl+F", description: "Toggle fuzzy search (in search)" },
+	{ key: "Ctrl+H", description: "Toggle filter mode (in search)" },
 	{ key: "w", description: "Toggle line wrapping" },
 	{ key: "Esc", description: "Cancel/clear" },
 	{ key: "q", description: "Quit" },
@@ -67,17 +70,28 @@ export function CommandPalette({
 		}
 	}, [isOpen]);
 
-	// Filter commands based on query
+	// Filter commands based on query (fuzzy search)
 	const filteredCommands = commandPalette.filterCommands(query);
 
-	// Items to display (commands or shortcuts)
-	const displayItems = showShortcuts
+	// Items to display (commands with highlights, or shortcuts)
+	const displayItems: Array<{
+		id: string;
+		label: string;
+		shortcut?: string;
+		highlights: number[];
+	}> = showShortcuts
 		? KEYBOARD_SHORTCUTS.map((s, i) => ({
 				id: `shortcut-${i}`,
 				label: s.description,
 				shortcut: s.key,
+				highlights: [],
 			}))
-		: filteredCommands;
+		: filteredCommands.map((item) => ({
+				id: item.command.id,
+				label: item.command.label,
+				shortcut: item.command.shortcut,
+				highlights: item.highlights,
+			}));
 
 	// Ensure selected index is within bounds
 	useEffect(() => {
@@ -98,7 +112,7 @@ export function CommandPalette({
 			onClose();
 			// Execute after closing to avoid UI conflicts
 			setTimeout(() => {
-				commandPalette.execute(selected.id);
+				commandPalette.execute(selected.command.id);
 			}, 0);
 		}
 	}, [showShortcuts, filteredCommands, selectedIndex, onClose]);
@@ -248,6 +262,11 @@ export function CommandPalette({
 					) : (
 						displayItems.map((item, index) => {
 							const isSelected = index === selectedIndex;
+							// Render label with fuzzy highlighting
+							const labelSegments = calculateFuzzyHighlightSegments(
+								item.label,
+								item.highlights,
+							);
 							return (
 								<box
 									key={item.id}
@@ -259,9 +278,23 @@ export function CommandPalette({
 									}
 								>
 									<text fg={colors.text}>
-										{item.label}
+										{(() => {
+											let pos = 0;
+											return labelSegments.map((seg) => {
+												const key = `${pos}-${seg.isMatch ? "m" : "t"}`;
+												pos += seg.text.length;
+												return (
+													<span
+														key={key}
+														fg={seg.isMatch ? colors.warning : colors.text}
+													>
+														{seg.text}
+													</span>
+												);
+											});
+										})()}
 										{item.shortcut && (
-											<span fg={colors.textDim}> ({item.shortcut})</span>
+											<span fg={colors.textMuted}> ({item.shortcut})</span>
 										)}
 									</text>
 								</box>

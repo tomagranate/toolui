@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import fuzzysort from "fuzzysort";
 
 export interface Command {
 	id: string;
@@ -6,6 +7,13 @@ export interface Command {
 	shortcut?: string;
 	action: () => void;
 	category?: string;
+}
+
+/** Command with fuzzy search highlight information */
+export interface CommandWithHighlights {
+	command: Command;
+	/** Character indices that matched in the label (for highlighting) */
+	highlights: number[];
 }
 
 type CommandListener = (commands: Command[]) => void;
@@ -43,18 +51,24 @@ class CommandPaletteStore extends EventEmitter {
 	}
 
 	/**
-	 * Filter commands by query string (matches label, case-insensitive)
+	 * Filter commands using fuzzy search (always fuzzy for command palette).
+	 * Returns commands with highlight indices for character-level highlighting.
 	 */
-	filterCommands(query: string): Command[] {
+	filterCommands(query: string): CommandWithHighlights[] {
+		const commands = this.getCommands();
 		if (!query.trim()) {
-			return this.getCommands();
+			return commands.map((command) => ({ command, highlights: [] }));
 		}
-		const lowerQuery = query.toLowerCase();
-		return this.getCommands().filter(
-			(cmd) =>
-				cmd.label.toLowerCase().includes(lowerQuery) ||
-				cmd.category?.toLowerCase().includes(lowerQuery),
-		);
+
+		const results = fuzzysort.go(query, commands, {
+			key: "label",
+			threshold: 0.3, // Require reasonable match quality (0-1 scale)
+		});
+
+		return results.map((r) => ({
+			command: r.obj,
+			highlights: r.indexes ? Array.from(r.indexes) : [],
+		}));
 	}
 
 	/**

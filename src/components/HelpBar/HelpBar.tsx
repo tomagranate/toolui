@@ -28,10 +28,16 @@ function getHintsForMode(mode: HelpBarMode): HintItem[] {
 		case "search":
 			return [
 				{
+					key: "^F",
+					compactKey: "^F",
+					action: "fuzzy",
+					compactAction: "fzy",
+				},
+				{
 					key: "^H",
 					compactKey: "^H",
-					action: "toggle filter",
-					compactAction: "filter",
+					action: "filter",
+					compactAction: "flt",
 				},
 				{
 					key: "Enter",

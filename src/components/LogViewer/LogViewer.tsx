@@ -17,6 +17,11 @@ import React, {
 	useState,
 } from "react";
 import { copyToClipboard } from "../../lib/clipboard";
+import {
+	type FuzzyMatch,
+	fuzzyFindLines,
+	substringFindLines,
+} from "../../lib/search";
 import type { AnsiPalette, Theme } from "../../lib/theme";
 import type { ToolState } from "../../types";
 
@@ -95,8 +100,8 @@ import {
 	calculateContentWidth,
 	calculateScrollInfo,
 	calculateVisibleRange,
-	findMatchingLines,
 	getLineNumberWidth,
+	highlightSegmentsWithFuzzyIndices,
 	highlightSegmentsWithSearch,
 	LINE_NUMBER_WIDTH_THRESHOLD,
 	shouldVirtualize,
@@ -111,10 +116,12 @@ interface LogViewerProps {
 	searchMode: boolean;
 	searchQuery: string;
 	filterMode: boolean;
+	fuzzyMode: boolean;
 	currentMatchIndex: number;
 	onSearchModeChange: (active: boolean) => void;
 	onSearchQueryChange: (query: string) => void;
 	onFilterModeChange: (filter: boolean) => void;
+	onFuzzyModeChange: (fuzzy: boolean) => void;
 	onCurrentMatchIndexChange: (index: number) => void;
 	/** Control line number visibility: true = always, false = never, "auto" = based on terminal width */
 	showLineNumbers?: boolean | "auto";
@@ -130,10 +137,12 @@ export const LogViewer = React.memo(function LogViewer({
 	searchMode,
 	searchQuery,
 	filterMode,
+	fuzzyMode,
 	currentMatchIndex,
 	onSearchModeChange,
 	onSearchQueryChange,
 	onFilterModeChange,
+	onFuzzyModeChange,
 	onCurrentMatchIndexChange,
 	showLineNumbers = "auto",
 	lineWrap = true,
@@ -193,11 +202,28 @@ export const LogViewer = React.memo(function LogViewer({
 	// Extract just the text for searching
 	const logTexts = useMemo(() => logLines.map((line) => line.text), [logLines]);
 
-	// Find matching lines for search
-	const matchingLines = useMemo(
-		() => findMatchingLines(logTexts, searchQuery),
-		[logTexts, searchQuery],
-	);
+	// Find matching lines for search (fuzzy or substring)
+	const fuzzyResults = useMemo<FuzzyMatch[]>(() => {
+		if (!fuzzyMode || !searchQuery) return [];
+		return fuzzyFindLines(logTexts, searchQuery);
+	}, [logTexts, searchQuery, fuzzyMode]);
+
+	// Create a map of line index -> highlight indices for fuzzy mode
+	const fuzzyHighlightsMap = useMemo(() => {
+		const map = new Map<number, number[]>();
+		for (const result of fuzzyResults) {
+			map.set(result.index, result.highlights);
+		}
+		return map;
+	}, [fuzzyResults]);
+
+	// Get matching line indices (from fuzzy results or substring search)
+	const matchingLines = useMemo(() => {
+		if (fuzzyMode) {
+			return fuzzyResults.map((r) => r.index);
+		}
+		return substringFindLines(logTexts, searchQuery);
+	}, [fuzzyMode, fuzzyResults, logTexts, searchQuery]);
 
 	// Calculate available width for line content (for truncation when lineWrap is off)
 	const contentWidth = calculateContentWidth({
@@ -493,6 +519,11 @@ export const LogViewer = React.memo(function LogViewer({
 				onSearchModeChange(false);
 				return;
 			}
+			// Toggle fuzzy mode with Ctrl+F
+			if (key.ctrl && key.name === "f") {
+				onFuzzyModeChange(!fuzzyMode);
+				return;
+			}
 			// Toggle filter mode with Ctrl+H
 			if (key.ctrl && key.name === "h") {
 				onFilterModeChange(!filterMode);
@@ -610,9 +641,12 @@ export const LogViewer = React.memo(function LogViewer({
 		};
 	}, [renderer, copyText]);
 
+	// Whether to add left margin (in vertical layout, creates gap between sidebar and content)
+	const needsLeftMargin = sidebarWidth > 0;
+
 	return (
-		<box flexGrow={1} flexDirection="column">
-			{/* Search bar */}
+		<box flexGrow={1} flexDirection="column" backgroundColor={colors.surface0}>
+			{/* Search bar - no left margin, extends to sidebar edge */}
 			{(searchMode || searchQuery) && (
 				<box
 					height={3}
@@ -665,7 +699,11 @@ export const LogViewer = React.memo(function LogViewer({
 						{searchQuery && matchingLines.length === 0 && (
 							<span fg={colors.error}> (no matches)</span>
 						)}
-						<span> [Filter: {filterMode ? "ON" : "OFF"}]</span>
+						<span>
+							{" "}
+							[{fuzzyMode ? "Fuzzy" : "Substring"}] [Filter:{" "}
+							{filterMode ? "ON" : "OFF"}]
+						</span>
 					</text>
 				</box>
 			)}
@@ -678,6 +716,7 @@ export const LogViewer = React.memo(function LogViewer({
 					justifyContent="center"
 					alignItems="center"
 					backgroundColor={colors.surface0}
+					marginLeft={needsLeftMargin ? 1 : 0}
 					onMouseUp={scrollToTop}
 				>
 					<text fg={colors.textMuted}>↑ {scrollInfo.linesAbove} more ↑</text>
@@ -685,6 +724,7 @@ export const LogViewer = React.memo(function LogViewer({
 			)}
 
 			<scrollbox
+				marginLeft={needsLeftMargin ? 1 : 0}
 				ref={scrollboxRef}
 				flexGrow={1}
 				backgroundColor={colors.surface0}
@@ -787,10 +827,13 @@ export const LogViewer = React.memo(function LogViewer({
 
 								// Apply search highlighting on top of ANSI colors
 								if (searchQuery && isMatch) {
-									const highlighted = highlightSegmentsWithSearch(
-										displaySegments,
-										searchQuery,
-									);
+									// Use fuzzy highlighting (character-level) or substring highlighting
+									const highlighted = fuzzyMode
+										? highlightSegmentsWithFuzzyIndices(
+												displaySegments,
+												fuzzyHighlightsMap.get(originalIndex) ?? [],
+											)
+										: highlightSegmentsWithSearch(displaySegments, searchQuery);
 									// Build keys based on cumulative position
 									let pos = 0;
 									return highlighted.map((seg) => {
@@ -923,12 +966,18 @@ export const LogViewer = React.memo(function LogViewer({
 					justifyContent="center"
 					alignItems="center"
 					backgroundColor={colors.surface0}
+					marginLeft={needsLeftMargin ? 1 : 0}
 					onMouseUp={scrollToBottom}
 				>
 					<text fg={colors.textMuted}>↓ {scrollInfo.linesBelow} more ↓</text>
 				</box>
 			) : (
-				<box height={1} width="100%" backgroundColor={colors.surface0} />
+				<box
+					height={1}
+					width="100%"
+					backgroundColor={colors.surface0}
+					marginLeft={needsLeftMargin ? 1 : 0}
+				/>
 			)}
 		</box>
 	);
