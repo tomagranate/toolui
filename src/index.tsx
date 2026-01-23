@@ -1,6 +1,8 @@
 import { createCliRenderer } from "@opentui/core";
 import { createRoot } from "@opentui/react";
 import { App } from "./App";
+import { getHelpText, parseArgs } from "./cli";
+import { runInit, runMcp } from "./commands";
 import { ApiServer, DEFAULT_MCP_PORT } from "./lib/api";
 import { loadConfig } from "./lib/config";
 import { loadPreferences, updatePreference } from "./lib/preferences";
@@ -13,9 +15,30 @@ import {
 } from "./lib/theme";
 
 async function main() {
+	// Parse CLI arguments
+	const args = parseArgs();
+
+	// Handle --help
+	if (args.showHelp) {
+		console.log(getHelpText());
+		process.exit(0);
+	}
+
+	// Handle init command
+	if (args.command === "init") {
+		await runInit();
+		return;
+	}
+
+	// Handle mcp command
+	if (args.command === "mcp") {
+		await runMcp(args.configPath);
+		return;
+	}
+
 	try {
 		// Load configuration
-		const configPath = process.argv[2] || "toolui.config.toml";
+		const configPath = args.configPath ?? "toolui.config.toml";
 		const config = await loadConfig(configPath);
 
 		if (config.tools.length === 0) {
