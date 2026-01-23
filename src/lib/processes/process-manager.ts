@@ -398,6 +398,44 @@ export class ProcessManager {
 	}
 
 	/**
+	 * Find a tool by name.
+	 * @returns The tool index and state, or undefined if not found
+	 */
+	getToolByName(name: string): { index: number; tool: ToolState } | undefined {
+		const index = this.tools.findIndex((t) => t.config.name === name);
+		if (index === -1) return undefined;
+		const tool = this.tools[index];
+		if (!tool) return undefined;
+		return { index, tool };
+	}
+
+	/**
+	 * Create a virtual tool (no spawned process) for internal use like MCP API.
+	 * The tool starts in "running" status and can receive logs via addLogToTool().
+	 * @returns The index of the created virtual tool
+	 */
+	createVirtualTool(name: string): number {
+		const tool: ToolState = {
+			config: { name, command: "" },
+			process: null,
+			logs: [],
+			status: "running",
+			exitCode: null,
+		};
+		this.tools.push(tool);
+		return 0;
+	}
+
+	/**
+	 * Add a log line to a tool (public API for virtual tools).
+	 * @param index - Tool index
+	 * @param message - Plain text message to log
+	 */
+	addLogToTool(index: number, message: string): void {
+		this.addLog(index, message);
+	}
+
+	/**
 	 * Save PID to file for a specific tool.
 	 */
 	private async savePidToFile(index: number): Promise<void> {

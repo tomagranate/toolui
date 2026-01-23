@@ -1,6 +1,7 @@
 import { createCliRenderer } from "@opentui/core";
 import { createRoot } from "@opentui/react";
 import { App } from "./App";
+import { ApiServer, DEFAULT_MCP_PORT } from "./lib/api";
 import { loadConfig } from "./lib/config";
 import { loadPreferences, updatePreference } from "./lib/preferences";
 import { ProcessManager } from "./lib/processes";
@@ -62,6 +63,23 @@ async function main() {
 		const processManager = new ProcessManager(maxLogLines);
 		const initialTools = await processManager.initialize(config.tools);
 
+		// Start MCP API server if enabled
+		let apiServer: ApiServer | null = null;
+		if (config.mcp?.enabled) {
+			const port = config.mcp.port ?? DEFAULT_MCP_PORT;
+			const apiToolIndex = processManager.createVirtualTool("MCP API");
+			apiServer = new ApiServer(processManager, port, apiToolIndex);
+			try {
+				apiServer.start();
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				processManager.addLogToTool(
+					apiToolIndex,
+					`[ERROR] Failed to start MCP API server: ${message}`,
+				);
+			}
+		}
+
 		// Create renderer and render app
 		// Disable built-in Ctrl-C/signal handling - we manage shutdown ourselves
 		const renderer = await createCliRenderer({
@@ -101,6 +119,10 @@ async function main() {
 			isCleaningUp = true;
 
 			try {
+				// Stop MCP API server if running
+				if (apiServer) {
+					apiServer.stop();
+				}
 				// Trigger graceful shutdown through processManager
 				// Don't stop renderer yet - let it show shutdown progress
 				await processManager.cleanup();

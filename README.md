@@ -115,6 +115,64 @@ Example:
 theme = "dracula"
 ```
 
+## MCP Integration (AI Agent Support)
+
+ToolUI can expose an HTTP API that allows AI agents (like Cursor, Claude, etc.) to read process logs and control processes via the Model Context Protocol (MCP).
+
+### Enabling MCP
+
+Add the `[mcp]` section to your config file:
+
+```toml
+[mcp]
+enabled = true
+port = 18765  # optional, defaults to 18765
+```
+
+When enabled, a new "MCP API" tab will appear showing API server logs. The HTTP API will be available at `http://localhost:18765`.
+
+### Cursor Integration
+
+To use with Cursor, add the following to your MCP configuration (`~/.cursor/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "toolui": {
+      "command": "bun",
+      "args": ["run", "/path/to/toolui/src/mcp-server.ts"],
+      "env": {
+        "TOOLUI_API_URL": "http://localhost:18765"
+      }
+    }
+  }
+}
+```
+
+Replace `/path/to/toolui` with the actual path to your toolui installation.
+
+### Available MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `list_processes` | List all processes with their status |
+| `get_logs` | Get recent logs from a process (supports search and line limits) |
+| `stop_process` | Stop a running process |
+| `restart_process` | Restart a process |
+| `clear_logs` | Clear logs for a process |
+
+### HTTP API Endpoints
+
+The API can also be used directly:
+
+- `GET /api/health` - Health check
+- `GET /api/processes` - List all processes
+- `GET /api/processes/:name` - Get process details
+- `GET /api/processes/:name/logs?lines=100&search=error&searchType=substring` - Get logs
+- `POST /api/processes/:name/stop` - Stop a process
+- `POST /api/processes/:name/restart` - Restart a process
+- `POST /api/processes/:name/clear` - Clear logs
+
 ## Development
 
 ```bash

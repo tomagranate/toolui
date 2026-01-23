@@ -20,10 +20,20 @@ export interface HomeConfig {
 	titleFont?: ASCIIFontName;
 }
 
+/** MCP (Model Context Protocol) API configuration */
+export interface McpConfig {
+	/** Enable the HTTP API for MCP server integration. Default: false */
+	enabled?: boolean;
+	/** Port for the HTTP API server. Default: 18765 */
+	port?: number;
+}
+
 export interface Config {
 	tools: ToolConfig[];
 	/** Home tab configuration */
 	home?: HomeConfig;
+	/** MCP API configuration for AI agent integration */
+	mcp?: McpConfig;
 	ui?: {
 		/** Sidebar position for wide terminals: "left" or "right". Default: "left" */
 		sidebarPosition?: "left" | "right";
