@@ -423,7 +423,7 @@ export class ProcessManager {
 			exitCode: null,
 		};
 		this.tools.push(tool);
-		return 0;
+		return this.tools.length - 1;
 	}
 
 	/**

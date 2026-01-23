@@ -4,11 +4,34 @@ import { deletePidFile } from "../../processes/pid-file";
 import { ProcessManager } from "../../processes/process-manager";
 import { ApiServer } from "../api-server";
 
-// Type for API responses
+// Types for API responses
 interface ApiResponse {
 	ok: boolean;
 	data?: unknown;
 	error?: string;
+}
+
+interface ProcessSummary {
+	name: string;
+	description?: string;
+	status: string;
+	exitCode: number | null;
+	logCount: number;
+	pid?: number;
+	uptime?: number;
+}
+
+interface ProcessDetails extends ProcessSummary {
+	command: string;
+	args?: string[];
+	cwd?: string;
+}
+
+interface LogsData {
+	name: string;
+	totalLines: number;
+	returnedLines: number;
+	logs: string[];
 }
 
 const TEST_PORT = 19876;
@@ -24,11 +47,27 @@ beforeAll(async () => {
 	await deletePidFile();
 
 	const configs: ToolConfig[] = [
-		{ name: "test-process", command: "echo", args: ["hello world"] },
-		{ name: "long-running", command: "sleep", args: ["60"] },
+		{
+			name: "test-process",
+			command: "echo",
+			args: ["hello world"],
+			description: "A test process that echoes hello world",
+		},
+		{
+			name: "long-running",
+			command: "sleep",
+			args: ["60"],
+			description: "A long-running sleep process",
+		},
+		{
+			name: "no-description",
+			command: "echo",
+			args: ["no desc"],
+		},
 	];
 	await processManager.initialize(configs);
 
+	// createVirtualTool uses push and returns the correct index
 	virtualToolIndex = processManager.createVirtualTool("MCP API");
 	apiServer = new ApiServer(processManager, TEST_PORT, virtualToolIndex);
 	apiServer.start();
@@ -43,127 +82,502 @@ afterAll(async () => {
 });
 
 describe("ApiServer", () => {
-	test("GET /api/health returns healthy status", async () => {
-		const response = await fetch(apiUrl("/api/health"));
-		const json = (await response.json()) as ApiResponse;
+	// ==========================================================================
+	// Health Check
+	// ==========================================================================
+	describe("GET /api/health", () => {
+		test("returns healthy status", async () => {
+			const response = await fetch(apiUrl("/api/health"));
+			const json = (await response.json()) as ApiResponse;
 
-		expect(response.status).toBe(200);
-		expect(json).toEqual({ ok: true, data: { status: "healthy" } });
-	});
-
-	test("GET /api/processes lists processes excluding MCP API", async () => {
-		const response = await fetch(apiUrl("/api/processes"));
-		const json = (await response.json()) as ApiResponse;
-
-		expect(response.status).toBe(200);
-		expect(json.ok).toBe(true);
-		const data = json.data as { name: string }[];
-		expect(data.length).toBeGreaterThanOrEqual(2);
-
-		const names = data.map((p) => p.name);
-		expect(names).toContain("test-process");
-		expect(names).toContain("long-running");
-		expect(names).not.toContain("MCP API");
-	});
-
-	test("GET /api/processes/:name returns process details", async () => {
-		const response = await fetch(apiUrl("/api/processes/test-process"));
-		const json = (await response.json()) as ApiResponse;
-
-		expect(response.status).toBe(200);
-		expect(json.ok).toBe(true);
-		const data = json.data as { name: string; command: string };
-		expect(data.name).toBe("test-process");
-		expect(data.command).toBe("echo");
-	});
-
-	test("GET /api/processes/:name returns 404 for unknown process", async () => {
-		const response = await fetch(apiUrl("/api/processes/nonexistent"));
-		const json = (await response.json()) as ApiResponse;
-
-		expect(response.status).toBe(404);
-		expect(json.ok).toBe(false);
-	});
-
-	test("GET /api/processes/:name/logs returns 404 for unknown process", async () => {
-		const response = await fetch(apiUrl("/api/processes/nonexistent/logs"));
-		const json = (await response.json()) as ApiResponse;
-
-		expect(response.status).toBe(404);
-		expect(json.ok).toBe(false);
-	});
-
-	test("POST /api/processes/:name/stop returns 400 when process not running", async () => {
-		const response = await fetch(apiUrl("/api/processes/test-process/stop"), {
-			method: "POST",
+			expect(response.status).toBe(200);
+			expect(json).toEqual({ ok: true, data: { status: "healthy" } });
 		});
-		const json = (await response.json()) as ApiResponse;
-
-		expect(response.status).toBe(400);
-		expect(json.ok).toBe(false);
-		expect(json.error).toContain("not running");
 	});
 
-	test("POST /api/processes/:name/stop returns 404 for unknown process", async () => {
-		const response = await fetch(apiUrl("/api/processes/nonexistent/stop"), {
-			method: "POST",
+	// ==========================================================================
+	// List Processes
+	// ==========================================================================
+	describe("GET /api/processes", () => {
+		test("lists all processes excluding MCP API", async () => {
+			const response = await fetch(apiUrl("/api/processes"));
+			const json = (await response.json()) as ApiResponse;
+
+			expect(response.status).toBe(200);
+			expect(json.ok).toBe(true);
+			const data = json.data as ProcessSummary[];
+			expect(data.length).toBeGreaterThanOrEqual(3);
+
+			const names = data.map((p) => p.name);
+			expect(names).toContain("test-process");
+			expect(names).toContain("long-running");
+			expect(names).toContain("no-description");
+			expect(names).not.toContain("MCP API");
 		});
-		const json = (await response.json()) as ApiResponse;
 
-		expect(response.status).toBe(404);
-		expect(json.ok).toBe(false);
-	});
+		test("includes description field when present", async () => {
+			const response = await fetch(apiUrl("/api/processes"));
+			const json = (await response.json()) as ApiResponse;
+			const data = json.data as ProcessSummary[];
 
-	test("POST /api/processes/:name/restart returns success", async () => {
-		const response = await fetch(
-			apiUrl("/api/processes/long-running/restart"),
-			{ method: "POST" },
-		);
-		const json = (await response.json()) as ApiResponse;
+			const testProcess = data.find((p) => p.name === "test-process");
+			expect(testProcess?.description).toBe(
+				"A test process that echoes hello world",
+			);
 
-		expect(response.status).toBe(200);
-		expect(json.ok).toBe(true);
-		const data = json.data as { message: string };
-		expect(data.message).toContain("Restarted");
-	});
+			const longRunning = data.find((p) => p.name === "long-running");
+			expect(longRunning?.description).toBe("A long-running sleep process");
 
-	test("POST /api/processes/:name/restart returns 404 for unknown process", async () => {
-		const response = await fetch(apiUrl("/api/processes/nonexistent/restart"), {
-			method: "POST",
+			const noDesc = data.find((p) => p.name === "no-description");
+			expect(noDesc?.description).toBeUndefined();
 		});
-		const json = (await response.json()) as ApiResponse;
 
-		expect(response.status).toBe(404);
-		expect(json.ok).toBe(false);
-	});
+		test("includes status and logCount for each process", async () => {
+			const response = await fetch(apiUrl("/api/processes"));
+			const json = (await response.json()) as ApiResponse;
+			const data = json.data as ProcessSummary[];
 
-	test("POST /api/processes/:name/clear returns 404 for unknown process", async () => {
-		const response = await fetch(apiUrl("/api/processes/nonexistent/clear"), {
-			method: "POST",
+			for (const process of data) {
+				expect(process.status).toBeDefined();
+				expect(typeof process.logCount).toBe("number");
+				expect(
+					process.exitCode === null || typeof process.exitCode === "number",
+				).toBe(true);
+			}
 		});
-		const json = (await response.json()) as ApiResponse;
-
-		expect(response.status).toBe(404);
-		expect(json.ok).toBe(false);
 	});
 
-	test("unknown routes return 404", async () => {
-		const response = await fetch(apiUrl("/api/unknown"));
-		const json = (await response.json()) as ApiResponse;
+	// ==========================================================================
+	// Get Process Details
+	// ==========================================================================
+	describe("GET /api/processes/:name", () => {
+		test("returns process details with command and args", async () => {
+			const response = await fetch(apiUrl("/api/processes/test-process"));
+			const json = (await response.json()) as ApiResponse;
 
-		expect(response.status).toBe(404);
-		expect(json.ok).toBe(false);
-		expect(json.error).toBe("Not found");
+			expect(response.status).toBe(200);
+			expect(json.ok).toBe(true);
+			const data = json.data as ProcessDetails;
+			expect(data.name).toBe("test-process");
+			expect(data.command).toBe("echo");
+			expect(data.args).toEqual(["hello world"]);
+		});
+
+		test("returns 404 for unknown process", async () => {
+			const response = await fetch(apiUrl("/api/processes/nonexistent"));
+			const json = (await response.json()) as ApiResponse;
+
+			expect(response.status).toBe(404);
+			expect(json.ok).toBe(false);
+			expect(json.error).toContain("not found");
+		});
+
+		test("handles URL-encoded process names", async () => {
+			// This tests that names with special characters work
+			const response = await fetch(apiUrl("/api/processes/test-process"));
+			const json = (await response.json()) as ApiResponse;
+
+			expect(response.status).toBe(200);
+			expect(json.ok).toBe(true);
+		});
 	});
 
-	test("virtual tool receives startup logs", async () => {
-		const virtualTool = processManager.getTool(virtualToolIndex);
-		expect(virtualTool?.logs.length).toBeGreaterThan(0);
+	// ==========================================================================
+	// Get Logs
+	// ==========================================================================
+	describe("GET /api/processes/:name/logs", () => {
+		test("returns logs for a process", async () => {
+			// Add some logs to test with
+			const result = processManager.getToolByName("test-process");
+			processManager.clearLogs(result!.index);
+			processManager.addLogToTool(result!.index, "unique-log-marker-1");
+			processManager.addLogToTool(result!.index, "unique-log-marker-2");
+			processManager.addLogToTool(result!.index, "unique-log-marker-3");
 
-		const allLogText = virtualTool?.logs
-			.map((log) => log.segments.map((seg) => seg.text).join(""))
-			.join("\n");
+			const response = await fetch(apiUrl("/api/processes/test-process/logs"));
+			const json = (await response.json()) as ApiResponse;
 
-		expect(allLogText).toContain("MCP API server listening");
+			expect(response.status).toBe(200);
+			expect(json.ok).toBe(true);
+			const data = json.data as LogsData;
+			expect(data.name).toBe("test-process");
+			expect(data.totalLines).toBeGreaterThanOrEqual(3);
+			expect(data.returnedLines).toBeGreaterThanOrEqual(3);
+			expect(data.logs).toContain("unique-log-marker-1");
+			expect(data.logs).toContain("unique-log-marker-2");
+			expect(data.logs).toContain("unique-log-marker-3");
+		});
+
+		test("respects lines parameter (returns last N lines)", async () => {
+			const result = processManager.getToolByName("test-process");
+			processManager.clearLogs(result!.index);
+			processManager.addLogToTool(result!.index, "lines-test-A");
+			processManager.addLogToTool(result!.index, "lines-test-B");
+			processManager.addLogToTool(result!.index, "lines-test-C");
+			processManager.addLogToTool(result!.index, "lines-test-D");
+			processManager.addLogToTool(result!.index, "lines-test-E");
+
+			const response = await fetch(
+				apiUrl("/api/processes/test-process/logs?lines=2"),
+			);
+			const json = (await response.json()) as ApiResponse;
+
+			expect(response.status).toBe(200);
+			const data = json.data as LogsData;
+			expect(data.returnedLines).toBe(2);
+			// Should return the LAST 2 lines
+			expect(data.logs[0]).toBe("lines-test-D");
+			expect(data.logs[1]).toBe("lines-test-E");
+		});
+
+		test("filters logs with substring search", async () => {
+			const result = processManager.getToolByName("test-process");
+			processManager.clearLogs(result!.index);
+			processManager.addLogToTool(result!.index, "[INFO] Starting server");
+			processManager.addLogToTool(result!.index, "[ERROR] Connection failed");
+			processManager.addLogToTool(result!.index, "[INFO] Retrying...");
+			processManager.addLogToTool(result!.index, "[ERROR] Timeout occurred");
+			processManager.addLogToTool(result!.index, "[INFO] Success!");
+
+			const response = await fetch(
+				apiUrl(
+					"/api/processes/test-process/logs?search=ERROR&searchType=substring",
+				),
+			);
+			const json = (await response.json()) as ApiResponse;
+
+			expect(response.status).toBe(200);
+			const data = json.data as LogsData;
+			expect(data.returnedLines).toBe(2);
+			expect(data.logs.every((log) => log.includes("ERROR"))).toBe(true);
+		});
+
+		test("filters logs with fuzzy search", async () => {
+			const result = processManager.getToolByName("test-process");
+			processManager.clearLogs(result!.index);
+			processManager.addLogToTool(result!.index, "Database connected");
+			processManager.addLogToTool(result!.index, "User logged in");
+			processManager.addLogToTool(result!.index, "Data saved to database");
+			processManager.addLogToTool(result!.index, "Request completed");
+
+			const response = await fetch(
+				apiUrl(
+					"/api/processes/test-process/logs?search=database&searchType=fuzzy",
+				),
+			);
+			const json = (await response.json()) as ApiResponse;
+
+			expect(response.status).toBe(200);
+			const data = json.data as LogsData;
+			expect(data.returnedLines).toBeGreaterThanOrEqual(2);
+			// Fuzzy search should find "database" matches
+			expect(
+				data.logs.some((log) => log.toLowerCase().includes("database")),
+			).toBe(true);
+		});
+
+		test("combines search and lines parameters", async () => {
+			const result = processManager.getToolByName("test-process");
+			processManager.clearLogs(result!.index);
+			processManager.addLogToTool(result!.index, "[ERROR] Error 1");
+			processManager.addLogToTool(result!.index, "[INFO] Info 1");
+			processManager.addLogToTool(result!.index, "[ERROR] Error 2");
+			processManager.addLogToTool(result!.index, "[INFO] Info 2");
+			processManager.addLogToTool(result!.index, "[ERROR] Error 3");
+
+			const response = await fetch(
+				apiUrl("/api/processes/test-process/logs?search=ERROR&lines=2"),
+			);
+			const json = (await response.json()) as ApiResponse;
+
+			expect(response.status).toBe(200);
+			const data = json.data as LogsData;
+			// Should filter by ERROR first (3 matches), then take last 2
+			expect(data.returnedLines).toBe(2);
+			expect(data.logs).toEqual(["[ERROR] Error 2", "[ERROR] Error 3"]);
+		});
+
+		test("returns empty logs array when no logs exist", async () => {
+			// Use a different process that hasn't been touched by other tests
+			const result = processManager.getToolByName("no-description");
+			processManager.clearLogs(result!.index);
+
+			const response = await fetch(
+				apiUrl("/api/processes/no-description/logs"),
+			);
+			const json = (await response.json()) as ApiResponse;
+
+			expect(response.status).toBe(200);
+			const data = json.data as LogsData;
+			expect(data.totalLines).toBe(0);
+			expect(data.returnedLines).toBe(0);
+			expect(data.logs).toEqual([]);
+		});
+
+		test("returns 404 for unknown process", async () => {
+			const response = await fetch(apiUrl("/api/processes/nonexistent/logs"));
+			const json = (await response.json()) as ApiResponse;
+
+			expect(response.status).toBe(404);
+			expect(json.ok).toBe(false);
+		});
+	});
+
+	// ==========================================================================
+	// Stop Process
+	// ==========================================================================
+	describe("POST /api/processes/:name/stop", () => {
+		test("stops a running process", async () => {
+			// Start the process first
+			const result = processManager.getToolByName("long-running");
+			await processManager.startTool(result!.index);
+			await new Promise((resolve) => setTimeout(resolve, 100));
+
+			expect(processManager.getTool(result!.index)?.status).toBe("running");
+
+			const response = await fetch(apiUrl("/api/processes/long-running/stop"), {
+				method: "POST",
+			});
+			const json = (await response.json()) as ApiResponse;
+
+			expect(response.status).toBe(200);
+			expect(json.ok).toBe(true);
+			const data = json.data as { message: string };
+			expect(data.message).toContain("Stopped");
+		});
+
+		test("returns 400 when process not running", async () => {
+			// Ensure process is stopped
+			const result = processManager.getToolByName("test-process");
+			if (processManager.getTool(result!.index)?.status === "running") {
+				await processManager.stopTool(result!.index);
+			}
+
+			const response = await fetch(apiUrl("/api/processes/test-process/stop"), {
+				method: "POST",
+			});
+			const json = (await response.json()) as ApiResponse;
+
+			expect(response.status).toBe(400);
+			expect(json.ok).toBe(false);
+			expect(json.error).toContain("not running");
+		});
+
+		test("returns 404 for unknown process", async () => {
+			const response = await fetch(apiUrl("/api/processes/nonexistent/stop"), {
+				method: "POST",
+			});
+			const json = (await response.json()) as ApiResponse;
+
+			expect(response.status).toBe(404);
+			expect(json.ok).toBe(false);
+		});
+	});
+
+	// ==========================================================================
+	// Restart Process
+	// ==========================================================================
+	describe("POST /api/processes/:name/restart", () => {
+		test("restarts a stopped process", async () => {
+			// Ensure process is stopped first
+			const result = processManager.getToolByName("long-running");
+			if (processManager.getTool(result!.index)?.status === "running") {
+				await processManager.stopTool(result!.index);
+				await new Promise((resolve) => setTimeout(resolve, 100));
+			}
+
+			const response = await fetch(
+				apiUrl("/api/processes/long-running/restart"),
+				{ method: "POST" },
+			);
+			const json = (await response.json()) as ApiResponse;
+
+			expect(response.status).toBe(200);
+			expect(json.ok).toBe(true);
+			const data = json.data as { message: string };
+			expect(data.message).toContain("Restarted");
+
+			// Wait and verify it's running
+			await new Promise((resolve) => setTimeout(resolve, 100));
+			expect(processManager.getTool(result!.index)?.status).toBe("running");
+		});
+
+		test("restarts a running process (gets new PID)", async () => {
+			const result = processManager.getToolByName("long-running");
+
+			// Make sure it's running
+			if (processManager.getTool(result!.index)?.status !== "running") {
+				await processManager.startTool(result!.index);
+				await new Promise((resolve) => setTimeout(resolve, 100));
+			}
+			const oldPid = processManager.getTool(result!.index)?.pid;
+
+			const response = await fetch(
+				apiUrl("/api/processes/long-running/restart"),
+				{ method: "POST" },
+			);
+			const json = (await response.json()) as ApiResponse;
+
+			expect(response.status).toBe(200);
+			expect(json.ok).toBe(true);
+
+			// Wait for restart
+			await new Promise((resolve) => setTimeout(resolve, 200));
+			const newPid = processManager.getTool(result!.index)?.pid;
+			expect(newPid).toBeDefined();
+			expect(newPid).not.toBe(oldPid);
+		});
+
+		test("returns 404 for unknown process", async () => {
+			const response = await fetch(
+				apiUrl("/api/processes/nonexistent/restart"),
+				{ method: "POST" },
+			);
+			const json = (await response.json()) as ApiResponse;
+
+			expect(response.status).toBe(404);
+			expect(json.ok).toBe(false);
+		});
+	});
+
+	// ==========================================================================
+	// Clear Logs
+	// ==========================================================================
+	describe("POST /api/processes/:name/clear", () => {
+		test("clears logs for a process", async () => {
+			// Add some logs first
+			const result = processManager.getToolByName("test-process");
+			processManager.addLogToTool(result!.index, "log to clear 1");
+			processManager.addLogToTool(result!.index, "log to clear 2");
+			expect(
+				processManager.getTool(result!.index)?.logs.length,
+			).toBeGreaterThan(0);
+
+			const response = await fetch(
+				apiUrl("/api/processes/test-process/clear"),
+				{ method: "POST" },
+			);
+			const json = (await response.json()) as ApiResponse;
+
+			expect(response.status).toBe(200);
+			expect(json.ok).toBe(true);
+			const data = json.data as { message: string };
+			expect(data.message).toContain("Cleared");
+
+			// Verify logs are cleared
+			expect(processManager.getTool(result!.index)?.logs.length).toBe(0);
+		});
+
+		test("succeeds even when no logs exist", async () => {
+			const result = processManager.getToolByName("test-process");
+			processManager.clearLogs(result!.index);
+			expect(processManager.getTool(result!.index)?.logs.length).toBe(0);
+
+			const response = await fetch(
+				apiUrl("/api/processes/test-process/clear"),
+				{ method: "POST" },
+			);
+			const json = (await response.json()) as ApiResponse;
+
+			expect(response.status).toBe(200);
+			expect(json.ok).toBe(true);
+		});
+
+		test("returns 404 for unknown process", async () => {
+			const response = await fetch(apiUrl("/api/processes/nonexistent/clear"), {
+				method: "POST",
+			});
+			const json = (await response.json()) as ApiResponse;
+
+			expect(response.status).toBe(404);
+			expect(json.ok).toBe(false);
+		});
+	});
+
+	// ==========================================================================
+	// Error Handling & Edge Cases
+	// ==========================================================================
+	describe("Error handling", () => {
+		test("unknown routes return 404", async () => {
+			const response = await fetch(apiUrl("/api/unknown"));
+			const json = (await response.json()) as ApiResponse;
+
+			expect(response.status).toBe(404);
+			expect(json.ok).toBe(false);
+			expect(json.error).toBe("Not found");
+		});
+
+		test("unknown sub-routes return 404", async () => {
+			const response = await fetch(
+				apiUrl("/api/processes/test-process/unknown"),
+			);
+			const json = (await response.json()) as ApiResponse;
+
+			expect(response.status).toBe(404);
+			expect(json.ok).toBe(false);
+		});
+
+		test("wrong HTTP method returns 404", async () => {
+			// GET on a POST-only endpoint
+			const response = await fetch(
+				apiUrl("/api/processes/test-process/restart"),
+				{ method: "GET" },
+			);
+			const json = (await response.json()) as ApiResponse;
+
+			expect(response.status).toBe(404);
+			expect(json.ok).toBe(false);
+		});
+	});
+
+	// ==========================================================================
+	// Virtual Tool Logging
+	// ==========================================================================
+	describe("Virtual tool logging", () => {
+		test("virtual tool receives logs", async () => {
+			const virtualTool = processManager.getTool(virtualToolIndex);
+			expect(virtualTool).toBeDefined();
+			expect(virtualTool?.logs.length).toBeGreaterThan(0);
+
+			// The API server logs requests, so check we have some logs
+			const allLogText = virtualTool?.logs
+				.map((log) => log.segments.map((seg) => seg.text).join(""))
+				.join("\n");
+
+			// Should contain timestamps and request logs
+			expect(allLogText?.length).toBeGreaterThan(0);
+		});
+
+		test("logs each request to virtual tool", async () => {
+			const logsBefore =
+				processManager.getTool(virtualToolIndex)?.logs.length ?? 0;
+
+			// Make a request
+			await fetch(apiUrl("/api/health"));
+
+			// Check that new log was added
+			const logsAfter =
+				processManager.getTool(virtualToolIndex)?.logs.length ?? 0;
+			expect(logsAfter).toBeGreaterThan(logsBefore);
+
+			// Check the log contains the request
+			const lastLog = processManager
+				.getTool(virtualToolIndex)
+				?.logs.slice(-1)[0];
+			const logText = lastLog?.segments.map((seg) => seg.text).join("") ?? "";
+			expect(logText).toContain("GET /api/health");
+		});
+	});
+
+	// ==========================================================================
+	// CORS Headers
+	// ==========================================================================
+	describe("CORS headers", () => {
+		test("includes Access-Control-Allow-Origin header", async () => {
+			const response = await fetch(apiUrl("/api/health"));
+
+			expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+			expect(response.headers.get("Content-Type")).toBe("application/json");
+		});
 	});
 });

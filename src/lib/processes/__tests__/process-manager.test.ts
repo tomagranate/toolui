@@ -577,4 +577,115 @@ describe("ProcessManager", () => {
 			"Line 3",
 		);
 	});
+
+	// =========================================================================
+	// MCP API Helper Methods
+	// =========================================================================
+
+	test("getToolByName - finds existing tool by name", async () => {
+		const configs: ToolConfig[] = [
+			{ name: "first-tool", command: "echo", args: ["1"] },
+			{ name: "second-tool", command: "echo", args: ["2"] },
+			{ name: "third-tool", command: "echo", args: ["3"] },
+		];
+
+		await processManager.initialize(configs);
+
+		const result = processManager.getToolByName("second-tool");
+		expect(result).toBeDefined();
+		expect(result?.index).toBe(1);
+		expect(result?.tool.config.name).toBe("second-tool");
+	});
+
+	test("getToolByName - returns undefined for non-existent tool", async () => {
+		const configs: ToolConfig[] = [{ name: "my-tool", command: "echo" }];
+
+		await processManager.initialize(configs);
+
+		const result = processManager.getToolByName("nonexistent");
+		expect(result).toBeUndefined();
+	});
+
+	test("createVirtualTool - creates a virtual tool with running status", async () => {
+		const configs: ToolConfig[] = [{ name: "real-tool", command: "echo" }];
+
+		await processManager.initialize(configs);
+		const initialCount = processManager.getTools().length;
+
+		const index = processManager.createVirtualTool("Virtual API");
+
+		const tools = processManager.getTools();
+		expect(tools.length).toBe(initialCount + 1);
+
+		const virtualTool = processManager.getTool(index);
+		expect(virtualTool).toBeDefined();
+		expect(virtualTool?.config.name).toBe("Virtual API");
+		expect(virtualTool?.config.command).toBe("");
+		expect(virtualTool?.status).toBe("running");
+		expect(virtualTool?.process).toBeNull();
+		expect(virtualTool?.logs).toEqual([]);
+	});
+
+	test("addLogToTool - adds log messages to a tool", async () => {
+		const configs: ToolConfig[] = [{ name: "log-test", command: "echo" }];
+
+		await processManager.initialize(configs);
+
+		const result = processManager.getToolByName("log-test");
+		expect(result).toBeDefined();
+
+		processManager.addLogToTool(result!.index, "First log message");
+		processManager.addLogToTool(result!.index, "Second log message");
+
+		const tool = processManager.getTool(result!.index);
+		expect(tool?.logs.length).toBe(2);
+		expect(tool?.logs[0]?.segments[0]?.text).toBe("First log message");
+		expect(tool?.logs[1]?.segments[0]?.text).toBe("Second log message");
+	});
+
+	test("addLogToTool - handles invalid index gracefully", async () => {
+		const configs: ToolConfig[] = [{ name: "test", command: "echo" }];
+
+		await processManager.initialize(configs);
+
+		// Should not throw for invalid index
+		expect(() => processManager.addLogToTool(999, "test")).not.toThrow();
+	});
+
+	test("createVirtualTool + addLogToTool work together", async () => {
+		const configs: ToolConfig[] = [];
+		await processManager.initialize(configs);
+
+		const virtualIndex = processManager.createVirtualTool("MCP Server");
+
+		processManager.addLogToTool(virtualIndex, "[12:00:00] Server started");
+		processManager.addLogToTool(
+			virtualIndex,
+			"[12:00:01] Listening on port 8080",
+		);
+
+		const virtualTool = processManager.getTool(virtualIndex);
+		expect(virtualTool?.logs.length).toBe(2);
+		expect(virtualTool?.logs[0]?.segments[0]?.text).toContain("Server started");
+		expect(virtualTool?.logs[1]?.segments[0]?.text).toContain("Listening");
+	});
+
+	test("getToolByName works after createVirtualTool", async () => {
+		const configs: ToolConfig[] = [
+			{ name: "app-server", command: "node", args: ["server.js"] },
+		];
+
+		await processManager.initialize(configs);
+		processManager.createVirtualTool("API Logger");
+
+		// Should still find the original tool
+		const appResult = processManager.getToolByName("app-server");
+		expect(appResult).toBeDefined();
+		expect(appResult?.tool.config.name).toBe("app-server");
+
+		// Should find the virtual tool
+		const apiResult = processManager.getToolByName("API Logger");
+		expect(apiResult).toBeDefined();
+		expect(apiResult?.tool.config.name).toBe("API Logger");
+	});
 });
