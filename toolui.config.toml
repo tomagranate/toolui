@@ -1,11 +1,15 @@
 [home]
 enabled = true
 title = "Dev Stack"
-titleFont = "tiny"
+titleFont = "pallet"
 
 [ui]
 sidebarPosition = "left"
 horizontalTabPosition = "top"
+
+[mcp]
+enabled = true
+port = 18765
 
 # === Health Check Test Servers ===
 [[tools]]

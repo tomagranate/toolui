@@ -88,7 +88,7 @@ export async function runMcp(configPath?: string): Promise<void> {
 	if (!apiUrl) {
 		// Try to read port from config
 		try {
-			const config = await loadConfig(configPath ?? "toolui.config.toml");
+			const { config } = await loadConfig(configPath ?? "toolui.config.toml");
 			const port = config.mcp?.port ?? DEFAULT_MCP_PORT;
 			apiUrl = `http://localhost:${port}`;
 		} catch {

@@ -1,9 +1,13 @@
 import { createCliRenderer } from "@opentui/core";
 import { createRoot } from "@opentui/react";
+import { createElement } from "react";
 import { App } from "./App";
 import { getHelpText, parseArgs } from "./cli";
 import { runInit, runMcp } from "./commands";
+import { ErrorBoundary } from "./components/ErrorBoundary";
+import { toast } from "./components/Toast";
 import { ApiServer, DEFAULT_MCP_PORT } from "./lib/api";
+import { copyToClipboard } from "./lib/clipboard";
 import { loadConfig } from "./lib/config";
 import { loadPreferences, updatePreference } from "./lib/preferences";
 import { ProcessManager } from "./lib/processes";
@@ -13,6 +17,9 @@ import {
 	type Theme,
 	ThemeProvider,
 } from "./lib/theme";
+
+/** Duration for config warning toast (10 seconds) */
+const CONFIG_WARNING_TOAST_DURATION = 10000;
 
 async function main() {
 	// Parse CLI arguments
@@ -36,14 +43,76 @@ async function main() {
 		return;
 	}
 
+	// Register SIGINT handler early - ensures Ctrl-C always works even if rendering fails
+	// This is critical for exiting the app if it gets into an error state
+	let sigintCount = 0;
+	let cleanupFn: (() => Promise<void>) | null = null;
+	process.on("SIGINT", async () => {
+		sigintCount++;
+		if (sigintCount === 1 && cleanupFn) {
+			// First Ctrl-C: trigger graceful shutdown
+			await cleanupFn();
+		} else {
+			// Second Ctrl-C or no cleanup function: force quit
+			process.exit(1);
+		}
+	});
+
+	// Also handle SIGTERM early
+	process.on("SIGTERM", async () => {
+		if (cleanupFn) {
+			await cleanupFn();
+		} else {
+			process.exit(0);
+		}
+	});
+
+	// Handle SIGQUIT (Ctrl-\) as emergency exit
+	// This works even in raw mode when Ctrl-C doesn't, because SIGQUIT
+	// is typically not disabled. Use this as escape hatch in error states.
+	process.on("SIGQUIT", () => {
+		// Restore terminal immediately
+		if (process.stdin.isTTY) {
+			process.stdin.setRawMode(false);
+		}
+		console.error("\n\nSIGQUIT received - forcing exit");
+		process.exit(1);
+	});
+
+	// Handle uncaught exceptions - restore terminal and exit
+	// This ensures Ctrl-C works even if rendering crashes, because the terminal
+	// is restored to normal mode where Ctrl-C generates SIGINT again
+	process.on("uncaughtException", (err) => {
+		// Restore terminal to normal mode so Ctrl-C works
+		if (process.stdin.isTTY) {
+			process.stdin.setRawMode(false);
+		}
+		console.error("\n\nFatal error:", err.message);
+		console.error(err.stack);
+		console.error("\nPress Ctrl-C to exit.");
+	});
+
+	// Same for unhandled promise rejections
+	process.on("unhandledRejection", (reason) => {
+		if (process.stdin.isTTY) {
+			process.stdin.setRawMode(false);
+		}
+		console.error("\n\nUnhandled rejection:", reason);
+		console.error("\nPress Ctrl-C to exit.");
+	});
+
+	// Store config warnings to show after rendering starts
+	let configWarnings: string[] = [];
+
 	try {
 		// Load configuration
 		const configPath = args.configPath ?? "toolui.config.toml";
-		const config = await loadConfig(configPath);
+		const { config, warnings } = await loadConfig(configPath);
+		configWarnings = warnings;
 
 		if (config.tools.length === 0) {
 			console.error(
-				"No tools configured. Please add tools to your config file.",
+				"No tools configured. Please add tools to your config file. Run `toolui init` to get started.",
 			);
 			process.exit(1);
 		}
@@ -104,10 +173,11 @@ async function main() {
 		}
 
 		// Create renderer and render app
-		// Disable built-in Ctrl-C/signal handling - we manage shutdown ourselves
+		// Use exitOnCtrlC: false so App.tsx can handle Ctrl-C for graceful shutdown
+		// ErrorBoundary's ErrorPage uses useKeyboard to handle Ctrl-C in error state
 		const renderer = await createCliRenderer({
-			exitOnCtrlC: false, // Don't destroy on Ctrl-C keypress
-			exitSignals: [], // Don't register any signal handlers
+			exitOnCtrlC: false, // Let App.tsx handle Ctrl-C for graceful shutdown
+			exitSignals: [], // Don't register any signal handlers (we handle SIGTERM ourselves)
 		});
 		const root = createRoot(renderer);
 
@@ -116,26 +186,51 @@ async function main() {
 			updatePreference("lineWrap", lineWrap);
 		};
 
-		// Render app wrapped in ThemeProvider
+		// Cleanup function for error boundary - properly stops renderer before exit
+		const handleErrorExit = () => {
+			renderer.stop();
+			renderer.destroy();
+		};
+
+		// Copy function for error boundary - uses renderer's real stdout for OSC 52
+		const handleErrorCopy = (text: string) => {
+			const realWrite = (
+				renderer as unknown as {
+					realStdoutWrite?: typeof process.stdout.write;
+				}
+			).realStdoutWrite;
+			if (realWrite) {
+				copyToClipboard(text, (data) => realWrite.call(process.stdout, data));
+			} else {
+				copyToClipboard(text);
+			}
+		};
+
+		// Render app wrapped in ErrorBoundary and ThemeProvider
+		// Use createElement for ErrorBoundary to avoid JSX type issues with class components
 		root.render(
-			<ThemeProvider
-				initialTheme={initialTheme}
-				initialThemeKey={initialThemeKey}
-				configLockedTheme={configLockedTheme}
-				terminalTheme={detectedTerminalTheme}
-			>
-				<App
-					processManager={processManager}
-					initialTools={initialTools}
-					renderer={renderer}
-					config={config}
-					initialLineWrap={initialLineWrap}
-					onLineWrapChange={handleLineWrapChange}
-				/>
-			</ThemeProvider>,
+			createElement(
+				ErrorBoundary,
+				{ onExit: handleErrorExit, onCopy: handleErrorCopy },
+				<ThemeProvider
+					initialTheme={initialTheme}
+					initialThemeKey={initialThemeKey}
+					configLockedTheme={configLockedTheme}
+					terminalTheme={detectedTerminalTheme}
+				>
+					<App
+						processManager={processManager}
+						initialTools={initialTools}
+						renderer={renderer}
+						config={config}
+						initialLineWrap={initialLineWrap}
+						onLineWrapChange={handleLineWrapChange}
+					/>
+				</ThemeProvider>,
+			),
 		);
 
-		// Set up cleanup on exit
+		// Set up cleanup on exit - wire this to the early SIGINT handler
 		let isCleaningUp = false;
 		const cleanup = async () => {
 			if (isCleaningUp) return;
@@ -158,25 +253,21 @@ async function main() {
 			process.exit(0);
 		};
 
-		// Handle SIGTERM (external termination signal)
-		process.on("SIGTERM", cleanup);
-
-		// Handle SIGINT (Ctrl-C)
-		// First Ctrl-C triggers graceful shutdown, second forces immediate exit
-		let sigintCount = 0;
-		process.on("SIGINT", async () => {
-			sigintCount++;
-			if (sigintCount === 1) {
-				// First Ctrl-C: trigger graceful shutdown
-				await cleanup();
-			} else {
-				// Second Ctrl-C during shutdown: force quit
-				process.exit(1);
-			}
-		});
+		// Connect cleanup function to the early signal handlers
+		cleanupFn = cleanup;
 
 		// Start rendering
 		await renderer.start();
+
+		// Show config warnings as toast after rendering has started
+		if (configWarnings.length > 0) {
+			// Combine all warnings into a single toast message
+			const warningMessage =
+				configWarnings.length === 1
+					? `Config warning: ${configWarnings[0]}`
+					: `Config warnings:\n${configWarnings.map((w) => `• ${w}`).join("\n")}`;
+			toast.error(warningMessage, CONFIG_WARNING_TOAST_DURATION);
+		}
 	} catch (error) {
 		console.error("Error starting toolui:", error);
 		process.exit(1);

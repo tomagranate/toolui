@@ -20,7 +20,8 @@ cwd = "."
 		await writeFile(configPath, configContent);
 
 		try {
-			const config = await loadConfig(configPath);
+			const { config, warnings } = await loadConfig(configPath);
+			expect(warnings).toHaveLength(0);
 			expect(config.tools).toHaveLength(1);
 			expect(config.tools[0]?.name).toBe("test-tool");
 			expect(config.tools[0]?.command).toBe("echo");
@@ -46,7 +47,8 @@ args = ["-la"]
 		await writeFile(configPath, configContent);
 
 		try {
-			const config = await loadConfig(configPath);
+			const { config, warnings } = await loadConfig(configPath);
+			expect(warnings).toHaveLength(0);
 			expect(config.tools).toHaveLength(2);
 			expect(config.tools[0]?.name).toBe("tool1");
 			expect(config.tools[1]?.name).toBe("tool2");
@@ -71,7 +73,8 @@ command = "echo"
 		await writeFile(configPath, configContent);
 
 		try {
-			const config = await loadConfig(configPath);
+			const { config, warnings } = await loadConfig(configPath);
+			expect(warnings).toHaveLength(0);
 			expect(config.ui?.sidebarPosition).toBe("right");
 			expect(config.ui?.widthThreshold).toBe(120);
 			expect(config.ui?.theme).toBe("synthwave");
@@ -127,5 +130,147 @@ name = "test"
 
 	test("loadConfig - non-existent file", async () => {
 		await expect(loadConfig("/nonexistent/file.toml")).rejects.toThrow();
+	});
+
+	test("loadConfig - invalid titleFont returns warning", async () => {
+		const configPath = join(tempDir, `test-config-${Date.now()}.toml`);
+		const configContent = `
+[home]
+enabled = true
+titleFont = "invalid-font"
+
+[[tools]]
+name = "test"
+command = "echo"
+		`.trim();
+
+		await writeFile(configPath, configContent);
+
+		try {
+			const { config, warnings } = await loadConfig(configPath);
+			// Should parse successfully with warning
+			expect(config.tools).toHaveLength(1);
+			expect(config.home?.enabled).toBe(true);
+			// titleFont should not be set (invalid value ignored)
+			expect(config.home?.titleFont).toBeUndefined();
+			// Should have one warning about invalid titleFont
+			expect(warnings).toHaveLength(1);
+			expect(warnings[0]).toContain("titleFont");
+			expect(warnings[0]).toContain("invalid-font");
+		} finally {
+			await unlink(configPath).catch(() => {});
+		}
+	});
+
+	test("loadConfig - invalid sidebarPosition returns warning", async () => {
+		const configPath = join(tempDir, `test-config-${Date.now()}.toml`);
+		const configContent = `
+[ui]
+sidebarPosition = "center"
+
+[[tools]]
+name = "test"
+command = "echo"
+		`.trim();
+
+		await writeFile(configPath, configContent);
+
+		try {
+			const { config, warnings } = await loadConfig(configPath);
+			expect(config.tools).toHaveLength(1);
+			// sidebarPosition should not be set (invalid value ignored)
+			expect(config.ui?.sidebarPosition).toBeUndefined();
+			expect(warnings).toHaveLength(1);
+			expect(warnings[0]).toContain("sidebarPosition");
+			expect(warnings[0]).toContain("center");
+		} finally {
+			await unlink(configPath).catch(() => {});
+		}
+	});
+
+	test("loadConfig - invalid port returns warning", async () => {
+		const configPath = join(tempDir, `test-config-${Date.now()}.toml`);
+		const configContent = `
+[mcp]
+enabled = true
+port = 99999
+
+[[tools]]
+name = "test"
+command = "echo"
+		`.trim();
+
+		await writeFile(configPath, configContent);
+
+		try {
+			const { config, warnings } = await loadConfig(configPath);
+			expect(config.tools).toHaveLength(1);
+			expect(config.mcp?.enabled).toBe(true);
+			// port should not be set (invalid value ignored)
+			expect(config.mcp?.port).toBeUndefined();
+			expect(warnings).toHaveLength(1);
+			expect(warnings[0]).toContain("port");
+			expect(warnings[0]).toContain("99999");
+		} finally {
+			await unlink(configPath).catch(() => {});
+		}
+	});
+
+	test("loadConfig - multiple invalid values return multiple warnings", async () => {
+		const configPath = join(tempDir, `test-config-${Date.now()}.toml`);
+		const configContent = `
+[home]
+enabled = "yes"
+titleFont = "bad-font"
+
+[ui]
+sidebarPosition = "middle"
+widthThreshold = -50
+
+[[tools]]
+name = "test"
+command = "echo"
+		`.trim();
+
+		await writeFile(configPath, configContent);
+
+		try {
+			const { config, warnings } = await loadConfig(configPath);
+			expect(config.tools).toHaveLength(1);
+			// All invalid values should be ignored
+			expect(config.home?.enabled).toBeUndefined();
+			expect(config.home?.titleFont).toBeUndefined();
+			expect(config.ui?.sidebarPosition).toBeUndefined();
+			expect(config.ui?.widthThreshold).toBeUndefined();
+			// Should have 4 warnings
+			expect(warnings).toHaveLength(4);
+		} finally {
+			await unlink(configPath).catch(() => {});
+		}
+	});
+
+	test("loadConfig - wrong type returns warning", async () => {
+		const configPath = join(tempDir, `test-config-${Date.now()}.toml`);
+		const configContent = `
+[ui]
+maxLogLines = "not-a-number"
+
+[[tools]]
+name = "test"
+command = "echo"
+		`.trim();
+
+		await writeFile(configPath, configContent);
+
+		try {
+			const { config, warnings } = await loadConfig(configPath);
+			expect(config.tools).toHaveLength(1);
+			expect(config.ui?.maxLogLines).toBeUndefined();
+			expect(warnings).toHaveLength(1);
+			expect(warnings[0]).toContain("maxLogLines");
+			expect(warnings[0]).toContain("integer");
+		} finally {
+			await unlink(configPath).catch(() => {});
+		}
 	});
 });

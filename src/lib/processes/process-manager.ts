@@ -388,6 +388,23 @@ export class ProcessManager {
 		return this.isShuttingDown;
 	}
 
+	/**
+	 * Synchronously kill all running processes.
+	 * This is used in the process.on('exit') handler where async code can't run.
+	 * Sends SIGTERM to all processes without waiting for them to exit.
+	 */
+	killAllSync(): void {
+		for (const tool of this.tools) {
+			if (tool?.process && !tool.process.killed) {
+				try {
+					tool.process.kill("SIGTERM");
+				} catch {
+					// Ignore errors - process may have already exited
+				}
+			}
+		}
+	}
+
 	getRecentlyStopped(): Set<number> {
 		return this.recentlyStopped;
 	}
