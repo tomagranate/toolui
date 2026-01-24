@@ -44,8 +44,8 @@ widthThreshold = 100
 # (default: "default")
 theme = "default"
 
-# Maximum number of log lines to keep in memory per tool (default: 10000)
-maxLogLines = 10000
+# Maximum number of log lines to keep in memory per tool (default: 100000)
+maxLogLines = 100000
 
 # Show shortcut numbers (1-9) on the first 9 tabs (default: false)
 showTabNumbers = false

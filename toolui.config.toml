@@ -6,6 +6,7 @@ titleFont = "pallet"
 [ui]
 sidebarPosition = "left"
 horizontalTabPosition = "top"
+maxLogLines = 100000
 
 [mcp]
 enabled = true
@@ -84,6 +85,13 @@ cleanup = []
 name = "volume-20k"
 command = "bun"
 args = ["test-scripts/volume-20k.js"]
+cwd = "."
+cleanup = []
+
+[[tools]]
+name = "volume-110k"
+command = "bun"
+args = ["test-scripts/volume-110k.js"]
 cwd = "."
 cleanup = []
 

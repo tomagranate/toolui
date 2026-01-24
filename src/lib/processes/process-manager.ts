@@ -15,7 +15,7 @@ export class ProcessManager {
 	private isShuttingDown = false;
 	private recentlyStopped = new Set<number>();
 
-	constructor(maxLogLines: number = 10000) {
+	constructor(maxLogLines: number = 100000) {
 		this.maxLogLines = maxLogLines;
 	}
 

@@ -48,7 +48,7 @@ export interface Config {
 		 * Default: "default"
 		 */
 		theme?: string;
-		/** Maximum number of log lines to keep in memory per tool. Default: 10000 */
+		/** Maximum number of log lines to keep in memory per tool. Default: 100000 */
 		maxLogLines?: number;
 		/** Show shortcut numbers (1-9) on the first 9 tabs. Default: false */
 		showTabNumbers?: boolean;
