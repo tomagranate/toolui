@@ -29,6 +29,7 @@ export class ProcessManager {
 			logs: [],
 			status: "stopped",
 			exitCode: null,
+			logTrimCount: 0,
 		}));
 		return this.tools;
 	}
@@ -225,6 +226,7 @@ export class ProcessManager {
 		// Limit log size
 		if (tool.logs.length > this.maxLogLines) {
 			tool.logs.shift();
+			tool.logTrimCount++; // Track that indices have shifted
 		}
 	}
 
@@ -438,6 +440,7 @@ export class ProcessManager {
 			logs: [],
 			status: "running",
 			exitCode: null,
+			logTrimCount: 0,
 		};
 		this.tools.push(tool);
 		return this.tools.length - 1;

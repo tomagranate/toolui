@@ -1,16 +1,10 @@
 import { type CliRenderer, TextAttributes } from "@opentui/core";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CommandPalette, commandPalette } from "./components/CommandPalette";
 import { HelpBar, type HelpBarMode } from "./components/HelpBar";
 import { HomeTab } from "./components/HomeTab";
 import { LogViewer } from "./components/LogViewer";
-import { lineHeightCacheStore } from "./components/LogViewer/LineHeightCacheStore";
-import {
-	calculateContentWidth,
-	getLineNumberWidth,
-	LINE_NUMBER_WIDTH_THRESHOLD,
-} from "./components/LogViewer/log-viewer-utils";
 import { TabBar } from "./components/TabBar";
 import { ThemePicker } from "./components/ThemePicker";
 import { ToastContainer, toast } from "./components/Toast";
@@ -182,20 +176,8 @@ export function App({
 	// Vertical TabBar has width={20} + gap (1 char) = 21 chars
 	const sidebarWidth = useVertical ? 21 : 0;
 
-	// Calculate content width for cache measurement (mirrors LogViewer calculation)
+	// Line number display setting for LogViewer
 	const showLineNumbers = config.ui?.showLineNumbers ?? "auto";
-	const shouldShowLineNumbers =
-		showLineNumbers === true ||
-		(showLineNumbers === "auto" &&
-			terminalWidth >= LINE_NUMBER_WIDTH_THRESHOLD);
-	const maxLogLines = Math.max(...tools.map((t) => t.logs.length), 100);
-	const lineNumberWidth = getLineNumberWidth(maxLogLines);
-	const contentWidth = calculateContentWidth({
-		terminalWidth,
-		sidebarWidth,
-		showLineNumbers: shouldShowLineNumbers,
-		lineNumberWidth,
-	});
 
 	// Start all tools on mount
 	useEffect(() => {
@@ -231,50 +213,6 @@ export function App({
 		}
 	}, [tools, processManager]);
 
-	// Initialize proactive cache measurement
-	const measurerInitialized = useRef(false);
-	useEffect(() => {
-		if (!measurerInitialized.current) {
-			lineHeightCacheStore.initializeMeasurer(
-				renderer.widthMethod,
-				contentWidth,
-			);
-			lineHeightCacheStore.startBackgroundMeasurement(200);
-			measurerInitialized.current = true;
-		}
-
-		// Cleanup on unmount
-		return () => {
-			lineHeightCacheStore.stopBackgroundMeasurement();
-		};
-	}, [renderer.widthMethod, contentWidth]);
-
-	// Update cache settings when they change
-	useEffect(() => {
-		lineHeightCacheStore.setWrapWidth(contentWidth);
-	}, [contentWidth]);
-
-	useEffect(() => {
-		lineHeightCacheStore.setLineWrap(lineWrap);
-	}, [lineWrap]);
-
-	// Register tool sources for proactive measurement
-	const toolSources = useMemo(
-		() =>
-			tools.map((tool) => ({
-				name: tool.config.name,
-				getLines: () =>
-					tool.logs.map((logLine) =>
-						logLine.segments.map((segment) => segment.text).join(""),
-					),
-			})),
-		[tools],
-	);
-
-	useEffect(() => {
-		lineHeightCacheStore.registerToolSources(toolSources);
-	}, [toolSources]);
-
 	// Toggle line wrap function (used by both keyboard and command palette)
 	const toggleLineWrap = useCallback(() => {
 		setLineWrap((prev) => {
@@ -303,36 +241,41 @@ export function App({
 					}
 				},
 			},
-			{
-				id: "toggle-fuzzy-search",
-				label: currentSearchState.fuzzyMode
-					? "Switch to substring search"
-					: "Switch to fuzzy search",
-				shortcut: "Ctrl+F",
-				category: "Search",
-				action: () => {
-					if (currentToolName) {
-						updateTabSearchState(currentToolName, {
-							fuzzyMode: !currentSearchState.fuzzyMode,
-						});
-					}
-				},
-			},
-			{
-				id: "toggle-filter-mode",
-				label: currentSearchState.filterMode
-					? "Disable filter mode"
-					: "Enable filter mode",
-				shortcut: "Ctrl+H",
-				category: "Search",
-				action: () => {
-					if (currentToolName) {
-						updateTabSearchState(currentToolName, {
-							filterMode: !currentSearchState.filterMode,
-						});
-					}
-				},
-			},
+			// Only show fuzzy/filter commands when search is active on this tab
+			...(currentSearchState.searchQuery.length > 0
+				? [
+						{
+							id: "toggle-fuzzy-search",
+							label: currentSearchState.fuzzyMode
+								? "Switch to substring search"
+								: "Switch to fuzzy search",
+							shortcut: "Ctrl+F",
+							category: "Search",
+							action: () => {
+								if (currentToolName) {
+									updateTabSearchState(currentToolName, {
+										fuzzyMode: !currentSearchState.fuzzyMode,
+									});
+								}
+							},
+						},
+						{
+							id: "toggle-filter-mode",
+							label: currentSearchState.filterMode
+								? "Disable filter mode"
+								: "Enable filter mode",
+							shortcut: "Ctrl+H",
+							category: "Search",
+							action: () => {
+								if (currentToolName) {
+									updateTabSearchState(currentToolName, {
+										filterMode: !currentSearchState.filterMode,
+									});
+								}
+							},
+						},
+					]
+				: []),
 			{
 				id: "toggle-line-wrap",
 				label: lineWrap ? "Disable line wrapping" : "Enable line wrapping",
@@ -467,6 +410,7 @@ export function App({
 		lineWrap,
 		toggleLineWrap,
 		toggleConsole,
+		currentSearchState.searchQuery,
 		currentSearchState.fuzzyMode,
 		currentSearchState.filterMode,
 	]);
@@ -522,6 +466,10 @@ export function App({
 
 		// Command palette shortcut: Ctrl+P or Ctrl+K (works even in search mode)
 		if (key.ctrl && (key.name === "p" || key.name === "k")) {
+			// Exit search mode to avoid focus issues when palette closes
+			if (currentSearchState.searchMode && currentToolName) {
+				updateTabSearchState(currentToolName, { searchMode: false });
+			}
 			setCommandPaletteOpen(true);
 			return;
 		}
@@ -772,6 +720,10 @@ export function App({
 	);
 
 	// Calculate toast offset based on layout elements above the main content
+	// Search bar visibility: shown when search mode is active OR there's a search query
+	const isSearchBarVisible =
+		currentSearchState.searchMode || currentSearchState.searchQuery.length > 0;
+
 	const calculateToastOffset = useCallback(() => {
 		let offset = 1; // Base offset
 		if (hasShuttingDown) {
@@ -780,8 +732,17 @@ export function App({
 		if (!useVertical && horizontalTabPosition === "top") {
 			offset += 2; // Horizontal tab bar at top
 		}
+		if (isSearchBarVisible && !isHomeTabActive) {
+			offset += 3; // Search bar height (3 lines with border)
+		}
 		return offset;
-	}, [hasShuttingDown, useVertical, horizontalTabPosition]);
+	}, [
+		hasShuttingDown,
+		useVertical,
+		horizontalTabPosition,
+		isSearchBarVisible,
+		isHomeTabActive,
+	]);
 
 	return (
 		<box

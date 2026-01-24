@@ -161,9 +161,13 @@ export const LogViewer = React.memo(function LogViewer({
 	const visibleRangeRef = useRef<{
 		range: VisibleRange;
 		cacheContentWidth: number; // Track which cache width the range was calculated for
+		cacheLength: number; // Track cache length to detect new logs
+		isFiltering: boolean; // Track filtering state to detect mode changes
 	}>({
 		range: { start: 0, end: 50, topSpacerHeight: 0, bottomSpacerHeight: 0 },
 		cacheContentWidth: 0,
+		cacheLength: 0,
+		isFiltering: false,
 	});
 
 	// Flash state for copy feedback
@@ -186,14 +190,15 @@ export const LogViewer = React.memo(function LogViewer({
 	// Convert logs to plain text with stderr metadata
 	// Note: tool.logs.length is intentionally included to detect array mutations
 	// since the logs array reference stays the same when items are pushed
-	// biome-ignore lint/correctness/useExhaustiveDependencies: length detects array mutations
+	// logTrimCount forces recalculation when old logs are trimmed (which shifts indices)
+	// biome-ignore lint/correctness/useExhaustiveDependencies: length and trimCount detect array mutations
 	const logLines = useMemo(
 		() =>
 			tool.logs.map((logLine) => ({
 				text: logLine.segments.map((segment) => segment.text).join(""),
 				isStderr: logLine.isStderr ?? false,
 			})),
-		[tool.logs, tool.logs.length],
+		[tool.logs, tool.logs.length, tool.logTrimCount],
 	);
 
 	const totalLines = logLines.length;
@@ -236,28 +241,18 @@ export const LogViewer = React.memo(function LogViewer({
 	// Determine if virtualization is enabled for this render
 	const virtualizationEnabled = shouldVirtualize(totalLines);
 
-	// Initialize the shared cache store's measurer (only on first render)
-	const measurerInitialized = useRef(false);
-	if (!measurerInitialized.current) {
-		lineHeightCacheStore.initializeMeasurer(renderer.widthMethod, contentWidth);
-		measurerInitialized.current = true;
-	}
-
-	// Update wrap width when content width changes
-	useEffect(() => {
-		lineHeightCacheStore.setWrapWidth(contentWidth);
-	}, [contentWidth]);
-
 	// Get or build line height cache from the shared store
 	// This persists across tab switches, so we don't rebuild from scratch each time
-	const lineHeightCache = useMemo(() => {
-		return lineHeightCacheStore.getOrBuildCache(
-			tool.config.name,
-			logTexts,
-			contentWidth,
-			lineWrap,
-		);
-	}, [tool.config.name, logTexts, contentWidth, lineWrap]);
+	const lineHeightCache = useMemo(
+		() =>
+			lineHeightCacheStore.getOrBuildCache(
+				tool.config.name,
+				logTexts,
+				contentWidth,
+				lineWrap,
+			),
+		[tool.config.name, logTexts, contentWidth, lineWrap],
+	);
 
 	// Calculate the effective display count (filtered or full)
 	// Needed early for scrollInfo and visibleRange calculations
@@ -265,7 +260,8 @@ export const LogViewer = React.memo(function LogViewer({
 		filterMode && searchQuery ? matchingLines.length : totalLines;
 
 	// Whether we're in active filter mode (showing filtered results)
-	const isFiltering = filterMode && searchQuery && matchingLines.length > 0;
+	const isFiltering =
+		filterMode && searchQuery.length > 0 && matchingLines.length > 0;
 
 	// Build a derived line height cache for filtered results
 	// Maps filtered indices to cumulative row heights by looking up each matching line's height
@@ -274,17 +270,24 @@ export const LogViewer = React.memo(function LogViewer({
 
 		const cumulativeRows: number[] = [];
 		let totalRows = 0;
+		const cacheLength = lineHeightCache.cumulativeRows.length;
 
 		for (const originalIndex of matchingLines) {
 			// Get the height of this line from the original cache
-			// Height = cumulativeRows[i] - cumulativeRows[i-1] (or cumulativeRows[0] for first line)
-			const lineHeight =
-				originalIndex === 0
-					? (lineHeightCache.cumulativeRows[0] ?? 1)
-					: (lineHeightCache.cumulativeRows[originalIndex] ??
-							originalIndex + 1) -
-						(lineHeightCache.cumulativeRows[originalIndex - 1] ??
-							originalIndex);
+			// If the index is beyond the cache (new logs not yet cached), default to 1 row
+			let lineHeight = 1;
+
+			if (originalIndex < cacheLength) {
+				// Index is within cache bounds - calculate actual height
+				if (originalIndex === 0) {
+					lineHeight = lineHeightCache.cumulativeRows[0] ?? 1;
+				} else {
+					const current = lineHeightCache.cumulativeRows[originalIndex] ?? 0;
+					const previous =
+						lineHeightCache.cumulativeRows[originalIndex - 1] ?? 0;
+					lineHeight = Math.max(1, current - previous);
+				}
+			}
 
 			totalRows += lineHeight;
 			cumulativeRows.push(totalRows);
@@ -327,10 +330,24 @@ export const LogViewer = React.memo(function LogViewer({
 			? filteredLineHeightCache
 			: lineHeightCache;
 
-		// Force recalculation if cache content width changed (e.g., terminal resize)
+		const currentCacheLength = effectiveCache?.cumulativeRows.length ?? 0;
+
+		// Detect changes that require full recalculation
 		const cacheWidthChanged =
 			effectiveCache &&
 			lastRangeData.cacheContentWidth !== effectiveCache.contentWidth;
+		const cacheLengthChanged = lastRangeData.cacheLength !== currentCacheLength;
+		const filteringModeChanged = lastRangeData.isFiltering !== isFiltering;
+
+		// Helper to update ref with current state
+		const updateRef = (range: VisibleRange) => {
+			visibleRangeRef.current = {
+				range,
+				cacheContentWidth: effectiveCache?.contentWidth ?? 0,
+				cacheLength: currentCacheLength,
+				isFiltering,
+			};
+		};
 
 		// STABILIZER: When at/near bottom, use a fixed calculation to prevent oscillation
 		// At the bottom, render last (viewportHeight + overscan) lines with no bottom spacer
@@ -344,7 +361,6 @@ export const LogViewer = React.memo(function LogViewer({
 
 			// Calculate topSpacerHeight using the cache (row count, not line count)
 			// This ensures correct spacer height when lines wrap to multiple rows
-			// Only use cache when not filtering
 			let topSpacerHeight = start;
 			if (
 				effectiveCache &&
@@ -360,10 +376,7 @@ export const LogViewer = React.memo(function LogViewer({
 				topSpacerHeight,
 				bottomSpacerHeight: 0, // No bottom spacer when at bottom - prevents oscillation
 			};
-			visibleRangeRef.current = {
-				range: stableRange,
-				cacheContentWidth: effectiveCache?.contentWidth ?? 0,
-			};
+			updateRef(stableRange);
 			return stableRange;
 		}
 
@@ -372,8 +385,11 @@ export const LogViewer = React.memo(function LogViewer({
 		// Must be less than OVERSCAN_COUNT (200) to ensure content is ready before needed
 		const HYSTERESIS_BUFFER = 150;
 		const needsRecalculation =
-			cacheWidthChanged || // Cache changed (resize)
+			cacheWidthChanged || // Cache width changed (resize)
+			cacheLengthChanged || // Cache length changed (new logs)
+			filteringModeChanged || // Switched between filtering and non-filtering
 			lastRange.end === 0 || // Initial state
+			lastRange.end > effectiveLineCount || // Range exceeds current line count
 			firstVisibleLine < lastRange.start + HYSTERESIS_BUFFER ||
 			lastVisibleLine > lastRange.end - HYSTERESIS_BUFFER;
 
@@ -388,10 +404,7 @@ export const LogViewer = React.memo(function LogViewer({
 			totalLines: effectiveLineCount,
 			cache: effectiveCache,
 		});
-		visibleRangeRef.current = {
-			range,
-			cacheContentWidth: effectiveCache?.contentWidth ?? 0,
-		};
+		updateRef(range);
 		return range;
 	}, [
 		scrollData,

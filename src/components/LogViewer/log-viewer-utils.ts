@@ -184,7 +184,8 @@ export function calculateLineRows(
 	if (contentWidth <= 0) return 1;
 	// Use visible width to properly handle ANSI codes and wide characters
 	const visibleWidth = getVisibleWidth(line);
-	return Math.ceil(visibleWidth / contentWidth);
+	// Ensure at least 1 row (handles lines with only ANSI codes / 0 visible width)
+	return Math.max(1, Math.ceil(visibleWidth / contentWidth));
 }
 
 /**

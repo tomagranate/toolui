@@ -16,7 +16,12 @@ import { parse as parseToml } from "@iarna/toml";
 const CONFIG_KEYS = ["tools", "home", "mcp", "ui"] as const;
 
 // From src/lib/config/types.ts - HomeConfig interface
-const HOME_CONFIG_KEYS = ["enabled", "title", "titleFont"] as const;
+const HOME_CONFIG_KEYS = [
+	"enabled",
+	"title",
+	"titleFont",
+	"titleAlign",
+] as const;
 
 // From src/lib/config/types.ts - McpConfig interface
 const MCP_CONFIG_KEYS = ["enabled", "port"] as const;

@@ -93,11 +93,21 @@ export async function loadConfig(
 /**
  * Validate home config section, collecting warnings for invalid values
  */
+/** Known keys for home config section */
+const HOME_CONFIG_KEYS = ["enabled", "title", "titleFont", "titleAlign"];
+
 function validateHomeConfig(
 	raw: Record<string, unknown> | undefined,
 	warnings: string[],
 ): HomeConfig | undefined {
 	if (!raw) return undefined;
+
+	// Warn about unknown keys
+	for (const key of Object.keys(raw)) {
+		if (!HOME_CONFIG_KEYS.includes(key)) {
+			warnings.push(`[home] Unknown option '${key}' - ignoring`);
+		}
+	}
 
 	const result: HomeConfig = {};
 
@@ -131,8 +141,25 @@ function validateHomeConfig(
 		);
 	}
 
+	if (typeof raw.titleAlign === "string") {
+		if (raw.titleAlign === "left" || raw.titleAlign === "center") {
+			result.titleAlign = raw.titleAlign;
+		} else {
+			warnings.push(
+				`[home] 'titleAlign' must be "left" or "center". Got "${raw.titleAlign}". Using default: "left"`,
+			);
+		}
+	} else if (raw.titleAlign !== undefined) {
+		warnings.push(
+			`[home] 'titleAlign' must be a string, got ${typeof raw.titleAlign}. Using default: "left"`,
+		);
+	}
+
 	return result;
 }
+
+/** Known keys for mcp config section */
+const MCP_CONFIG_KEYS = ["enabled", "port"];
 
 /**
  * Validate mcp config section, collecting warnings for invalid values
@@ -142,6 +169,13 @@ function validateMcpConfig(
 	warnings: string[],
 ): McpConfig | undefined {
 	if (!raw) return undefined;
+
+	// Warn about unknown keys
+	for (const key of Object.keys(raw)) {
+		if (!MCP_CONFIG_KEYS.includes(key)) {
+			warnings.push(`[mcp] Unknown option '${key}' - ignoring`);
+		}
+	}
 
 	const result: McpConfig = {};
 
@@ -170,6 +204,17 @@ function validateMcpConfig(
 	return result;
 }
 
+/** Known keys for ui config section */
+const UI_CONFIG_KEYS = [
+	"sidebarPosition",
+	"horizontalTabPosition",
+	"widthThreshold",
+	"theme",
+	"maxLogLines",
+	"showTabNumbers",
+	"showLineNumbers",
+];
+
 /**
  * Validate ui config section, collecting warnings for invalid values
  */
@@ -178,6 +223,13 @@ function validateUiConfig(
 	warnings: string[],
 ): Config["ui"] | undefined {
 	if (!raw) return undefined;
+
+	// Warn about unknown keys
+	for (const key of Object.keys(raw)) {
+		if (!UI_CONFIG_KEYS.includes(key)) {
+			warnings.push(`[ui] Unknown option '${key}' - ignoring`);
+		}
+	}
 
 	const result: NonNullable<Config["ui"]> = {};
 

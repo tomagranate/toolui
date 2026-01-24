@@ -41,6 +41,7 @@ export function HomeTab({
 	const { width: terminalWidth } = useTerminalDimensions();
 	const title = config.title ?? "Home";
 	const titleFont = config.titleFont ?? "tiny";
+	const titleAlign = config.titleAlign ?? "left";
 
 	// Filter to only show tools with healthCheck, ui, or description configured
 	const servicesWithFeatures = tools
@@ -98,12 +99,19 @@ export function HomeTab({
 			backgroundColor={colors.surface0}
 		>
 			{/* ASCII Font Title */}
-			<box marginBottom={1}>
-				<ascii-font
-					text={title}
-					font={titleFont as ASCIIFontName}
-					color={colors.accent}
-				/>
+			<box
+				marginBottom={1}
+				width="100%"
+				flexDirection="row"
+				justifyContent={titleAlign === "center" ? "center" : "flex-start"}
+			>
+				<box>
+					<ascii-font
+						text={title}
+						font={titleFont as ASCIIFontName}
+						color={colors.accent}
+					/>
+				</box>
 			</box>
 
 			{/* Status Summary Bar */}

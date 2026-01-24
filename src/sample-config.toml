@@ -19,6 +19,9 @@ title = "My Project"
 # (default: "tiny")
 titleFont = "tiny"
 
+# Title alignment: "left" or "center" (default: "left")
+titleAlign = "left"
+
 # ------------------------------------------------------------------------------
 # UI Configuration
 # ------------------------------------------------------------------------------

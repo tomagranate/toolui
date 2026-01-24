@@ -55,6 +55,8 @@ export interface ToolState {
 	exitCode: number | null;
 	pid?: number; // Process ID for persistence
 	startTime?: number; // Unix timestamp when process started
+	/** Counter incremented when logs are trimmed (shifts indices) */
+	logTrimCount: number;
 }
 
 /** Health check status for a tool */

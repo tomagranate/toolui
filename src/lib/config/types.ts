@@ -18,6 +18,8 @@ export interface HomeConfig {
 	title?: string;
 	/** ASCII font for the title. Default: "tiny" */
 	titleFont?: ASCIIFontName;
+	/** Alignment of the title. Default: "left" */
+	titleAlign?: "left" | "center";
 }
 
 /** MCP (Model Context Protocol) API configuration */

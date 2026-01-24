@@ -261,12 +261,10 @@ async function main() {
 
 		// Show config warnings as toast after rendering has started
 		if (configWarnings.length > 0) {
-			// Combine all warnings into a single toast message
-			const warningMessage =
-				configWarnings.length === 1
-					? `Config warning: ${configWarnings[0]}`
-					: `Config warnings:\n${configWarnings.map((w) => `• ${w}`).join("\n")}`;
-			toast.error(warningMessage, CONFIG_WARNING_TOAST_DURATION);
+			// Show each warning as a separate toast for better readability
+			for (const warning of configWarnings) {
+				toast.error(`Config: ${warning}`, CONFIG_WARNING_TOAST_DURATION);
+			}
 		}
 	} catch (error) {
 		console.error("Error starting toolui:", error);

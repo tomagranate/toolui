@@ -14,6 +14,8 @@ type ToastListener = (toast: ToastMessage) => void;
 
 class ToastStore extends EventEmitter {
 	private counter = 0;
+	/** Queue of toasts fired before any subscriber attached */
+	private pendingToasts: ToastMessage[] = [];
 
 	/**
 	 * Show a toast notification
@@ -24,8 +26,14 @@ class ToastStore extends EventEmitter {
 		duration = DEFAULT_TOAST_DURATION,
 	): string {
 		const id = `toast-${++this.counter}`;
-		const toast: ToastMessage = { id, message, type, duration };
-		this.emit("toast", toast);
+		const toastMessage: ToastMessage = { id, message, type, duration };
+
+		// If no listeners yet, queue for later delivery
+		if (this.listenerCount("toast") === 0) {
+			this.pendingToasts.push(toastMessage);
+		} else {
+			this.emit("toast", toastMessage);
+		}
 		return id;
 	}
 
@@ -51,10 +59,20 @@ class ToastStore extends EventEmitter {
 	}
 
 	/**
-	 * Subscribe to toast events
+	 * Subscribe to toast events.
+	 * Any toasts that were fired before subscription will be delivered immediately.
 	 */
 	subscribe(listener: ToastListener): () => void {
 		this.on("toast", listener);
+
+		// Flush any pending toasts to the new subscriber
+		if (this.pendingToasts.length > 0) {
+			for (const pendingToast of this.pendingToasts) {
+				listener(pendingToast);
+			}
+			this.pendingToasts = [];
+		}
+
 		return () => this.off("toast", listener);
 	}
 }
