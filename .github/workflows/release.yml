@@ -9,8 +9,50 @@ permissions:
   contents: write
 
 jobs:
+  validate-version:
+    name: Validate Version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract tag version
+        id: tag
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Get package.json version
+        id: package
+        run: echo "version=$(jq -r .version package.json)" >> $GITHUB_OUTPUT
+
+      - name: Check version matches tag
+        run: |
+          TAG_VERSION="${{ steps.tag.outputs.version }}"
+          PACKAGE_VERSION="${{ steps.package.outputs.version }}"
+          if [ "$TAG_VERSION" != "$PACKAGE_VERSION" ]; then
+            echo "::error::Version mismatch: tag is v${TAG_VERSION} but package.json has ${PACKAGE_VERSION}"
+            echo "Please update package.json version to ${TAG_VERSION} before releasing."
+            exit 1
+          fi
+          echo "Version matches: v${TAG_VERSION}"
+
+      - name: Check version not already published
+        run: |
+          PACKAGE_NAME=$(jq -r .name package.json)
+          VERSION="${{ steps.package.outputs.version }}"
+          
+          # Check if version exists on npm
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://registry.npmjs.org/${PACKAGE_NAME}/${VERSION}")
+          
+          if [ "$HTTP_STATUS" = "200" ]; then
+            echo "::error::Version ${VERSION} of ${PACKAGE_NAME} has already been published to npm."
+            echo "Please increment the version in package.json before releasing."
+            exit 1
+          fi
+          echo "Version ${VERSION} is not yet published. Proceeding with release."
+
   build-unix:
     name: Build ${{ matrix.os }}-${{ matrix.arch }}
+    needs: validate-version
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -63,6 +105,7 @@ jobs:
 
   build-windows:
     name: Build windows-x64
+    needs: validate-version
     runs-on: windows-latest
     steps:
       - name: Checkout
