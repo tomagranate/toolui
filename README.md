@@ -25,7 +25,7 @@ brew install tomagranate/toolui/toolui
 ### NPM
 
 ```bash
-npm install -g toolui
+npm install -g @tomagranate/toolui
 ```
 
 ### curl (macOS and Linux)

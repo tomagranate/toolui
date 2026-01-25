@@ -1,5 +1,5 @@
 {
-	"name": "toolui",
+	"name": "@tomagranate/toolui",
 	"version": "0.1.0",
 	"description": "A Terminal User Interface (TUI) for running multiple local development servers and tools simultaneously",
 	"type": "module",
