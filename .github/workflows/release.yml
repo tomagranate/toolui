@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  build-unix:
     name: Build ${{ matrix.os }}-${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
     strategy:
@@ -19,23 +19,15 @@ jobs:
           - os: darwin
             arch: arm64
             runner: macos-latest
-            target: bun-darwin-arm64
           - os: darwin
             arch: x64
-            runner: macos-13
-            target: bun-darwin-x64
+            runner: macos-15-intel
           - os: linux
             arch: x64
             runner: ubuntu-latest
-            target: bun-linux-x64
           - os: linux
             arch: arm64
-            runner: ubuntu-latest
-            target: bun-linux-arm64
-          - os: windows
-            arch: x64
-            runner: ubuntu-latest
-            target: bun-windows-x64
+            runner: ubuntu-24.04-arm
 
     steps:
       - name: Checkout
@@ -51,13 +43,9 @@ jobs:
         run: |
           mkdir -p dist
           BINARY_NAME="toolui-${{ matrix.os }}-${{ matrix.arch }}"
-          if [ "${{ matrix.os }}" = "windows" ]; then
-            BINARY_NAME="${BINARY_NAME}.exe"
-          fi
-          bun build src/index.tsx --compile --minify --target=${{ matrix.target }} --outfile=dist/${BINARY_NAME}
+          bun build src/index.tsx --compile --minify --outfile=dist/${BINARY_NAME}
 
-      - name: Create archive (Unix)
-        if: matrix.os != 'windows'
+      - name: Create archive
         run: |
           cd dist
           BINARY_NAME="toolui-${{ matrix.os }}-${{ matrix.arch }}"
@@ -65,16 +53,7 @@ jobs:
           tar -czvf ${BINARY_NAME}.tar.gz ${BINARY_NAME}
           shasum -a 256 ${BINARY_NAME}.tar.gz > ${BINARY_NAME}.tar.gz.sha256
 
-      - name: Create archive (Windows)
-        if: matrix.os == 'windows'
-        run: |
-          cd dist
-          BINARY_NAME="toolui-${{ matrix.os }}-${{ matrix.arch }}.exe"
-          zip toolui-${{ matrix.os }}-${{ matrix.arch }}.zip ${BINARY_NAME}
-          shasum -a 256 toolui-${{ matrix.os }}-${{ matrix.arch }}.zip > toolui-${{ matrix.os }}-${{ matrix.arch }}.zip.sha256
-
-      - name: Upload artifacts (Unix)
-        if: matrix.os != 'windows'
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: toolui-${{ matrix.os }}-${{ matrix.arch }}
@@ -82,18 +61,43 @@ jobs:
             dist/toolui-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
             dist/toolui-${{ matrix.os }}-${{ matrix.arch }}.tar.gz.sha256
 
-      - name: Upload artifacts (Windows)
-        if: matrix.os == 'windows'
+  build-windows:
+    name: Build windows-x64
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build binary
+        run: |
+          mkdir -p dist
+          bun build src/index.tsx --compile --minify --outfile=dist/toolui-windows-x64.exe
+
+      - name: Create archive
+        shell: pwsh
+        run: |
+          cd dist
+          Compress-Archive -Path toolui-windows-x64.exe -DestinationPath toolui-windows-x64.zip
+          $hash = (Get-FileHash -Algorithm SHA256 toolui-windows-x64.zip).Hash.ToLower()
+          "$hash  toolui-windows-x64.zip" | Out-File -Encoding ascii toolui-windows-x64.zip.sha256
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: toolui-${{ matrix.os }}-${{ matrix.arch }}
+          name: toolui-windows-x64
           path: |
-            dist/toolui-${{ matrix.os }}-${{ matrix.arch }}.zip
-            dist/toolui-${{ matrix.os }}-${{ matrix.arch }}.zip.sha256
+            dist/toolui-windows-x64.zip
+            dist/toolui-windows-x64.zip.sha256
 
   release:
     name: Create Release
-    needs: build
+    needs: [build-unix, build-windows]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -122,7 +126,7 @@ jobs:
 
   publish-npm:
     name: Publish to NPM
-    needs: [build, release]
+    needs: [build-unix, build-windows, release]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
