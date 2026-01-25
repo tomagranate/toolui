@@ -74,7 +74,7 @@ jobs:
           
           if [ "$TAG_VERSION" != "$CURRENT_VERSION" ]; then
             echo "Updating package.json version from ${CURRENT_VERSION} to ${TAG_VERSION}"
-            jq --arg v "$TAG_VERSION" '.version = $v' package.json > package.json.tmp
+            jq --tab --arg v "$TAG_VERSION" '.version = $v' package.json > package.json.tmp
             mv package.json.tmp package.json
           else
             echo "package.json already has version ${TAG_VERSION}"
