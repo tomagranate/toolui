@@ -1,0 +1,176 @@
+name: Delete Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to delete (e.g., v1.2.3)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  validate-tag:
+    name: Validate Tag
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.extract.outputs.version }}
+      previous_tag: ${{ steps.previous.outputs.tag }}
+    steps:
+      - name: Validate tag format
+        run: |
+          TAG="${{ github.event.inputs.tag }}"
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+            echo "::error::Invalid tag format: $TAG"
+            echo "Tag must follow semver format: v1.2.3 or v1.2.3-beta.1"
+            exit 1
+          fi
+          echo "Tag format is valid: $TAG"
+
+      - name: Extract version
+        id: extract
+        run: |
+          TAG="${{ github.event.inputs.tag }}"
+          echo "version=${TAG#v}" >> $GITHUB_OUTPUT
+
+      - name: Check release exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.event.inputs.tag }}"
+          if ! gh release view "$TAG" --repo "${{ github.repository }}" > /dev/null 2>&1; then
+            echo "::error::Release $TAG does not exist"
+            exit 1
+          fi
+          echo "Release $TAG exists"
+
+      - name: Get previous release tag
+        id: previous
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.event.inputs.tag }}"
+          # Get all releases sorted by date, find the one before the target
+          PREVIOUS_TAG=$(gh release list --repo "${{ github.repository }}" --limit 100 | \
+            awk -F'\t' '{print $3}' | \
+            grep -A1 "^${TAG}$" | \
+            tail -n1)
+          
+          if [ "$PREVIOUS_TAG" = "$TAG" ] || [ -z "$PREVIOUS_TAG" ]; then
+            echo "No previous release found"
+            echo "tag=" >> $GITHUB_OUTPUT
+          else
+            echo "Previous release: $PREVIOUS_TAG"
+            echo "tag=$PREVIOUS_TAG" >> $GITHUB_OUTPUT
+          fi
+
+  delete-github-release:
+    name: Delete GitHub Release
+    needs: validate-tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.event.inputs.tag }}"
+          echo "Deleting release $TAG..."
+          gh release delete "$TAG" --repo "${{ github.repository }}" --yes
+          echo "Release deleted"
+
+      - name: Delete tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.event.inputs.tag }}"
+          echo "Deleting tag $TAG..."
+          gh api --method DELETE "/repos/${{ github.repository }}/git/refs/tags/${TAG}" || true
+          echo "Tag deleted"
+
+  unpublish-npm:
+    name: Unpublish from NPM
+    needs: validate-tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Get package name
+        id: package
+        run: echo "name=$(jq -r .name package.json)" >> $GITHUB_OUTPUT
+
+      - name: Unpublish from NPM
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          PACKAGE="${{ steps.package.outputs.name }}"
+          VERSION="${{ needs.validate-tag.outputs.version }}"
+          
+          echo "Checking if ${PACKAGE}@${VERSION} exists on npm..."
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://registry.npmjs.org/${PACKAGE}/${VERSION}")
+          
+          if [ "$HTTP_STATUS" = "200" ]; then
+            echo "Unpublishing ${PACKAGE}@${VERSION}..."
+            npm unpublish "${PACKAGE}@${VERSION}" --force
+            echo "Unpublished successfully"
+          else
+            echo "Version ${VERSION} not found on npm (status: $HTTP_STATUS), skipping unpublish"
+          fi
+
+  rollback-homebrew:
+    name: Rollback Homebrew Formula
+    needs: [validate-tag, delete-github-release]
+    runs-on: ubuntu-latest
+    if: needs.validate-tag.outputs.previous_tag != ''
+    steps:
+      - name: Extract previous version
+        id: previous
+        run: |
+          TAG="${{ needs.validate-tag.outputs.previous_tag }}"
+          echo "version=${TAG#v}" >> $GITHUB_OUTPUT
+
+      - name: Download previous release checksums
+        run: |
+          VERSION="${{ steps.previous.outputs.version }}"
+          mkdir -p checksums
+          
+          echo "Downloading checksums for v${VERSION}..."
+          for platform in darwin-arm64 darwin-x64 linux-x64 linux-arm64; do
+            URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/toolui-${platform}.tar.gz.sha256"
+            echo "Downloading $URL"
+            curl -sL "$URL" -o checksums/${platform}.sha256 || echo "Warning: Could not download checksum for $platform"
+          done
+          
+          # Read checksums into environment
+          for platform in darwin-arm64 darwin-x64 linux-x64 linux-arm64; do
+            if [ -f "checksums/${platform}.sha256" ]; then
+              CHECKSUM=$(cat "checksums/${platform}.sha256" | awk '{print $1}')
+              VARNAME=$(echo "$platform" | tr '-' '_' | tr '[:lower:]' '[:upper:]')
+              echo "${VARNAME}_SHA256=$CHECKSUM" >> $GITHUB_ENV
+              echo "Set ${VARNAME}_SHA256=$CHECKSUM"
+            fi
+          done
+
+      - name: Trigger Homebrew tap rollback
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          repository: ${{ github.repository_owner }}/homebrew-toolui
+          event-type: update-formula
+          client-payload: |
+            {
+              "version": "${{ steps.previous.outputs.version }}",
+              "darwin_arm64_sha256": "${{ env.DARWIN_ARM64_SHA256 }}",
+              "darwin_x64_sha256": "${{ env.DARWIN_X64_SHA256 }}",
+              "linux_x64_sha256": "${{ env.LINUX_X64_SHA256 }}",
+              "linux_arm64_sha256": "${{ env.LINUX_ARM64_SHA256 }}"
+            }
+        continue-on-error: true
