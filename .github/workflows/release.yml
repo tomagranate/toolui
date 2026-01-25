@@ -49,14 +49,16 @@ jobs:
       - name: Check version not already published on npm
         run: |
           VERSION="${{ steps.tag.outputs.version }}"
-          # Using the package name from the repo - adjust if needed
-          PACKAGE_NAME="@tomagranate/toolui"
+          # For scoped packages, encode the @ and / properly for the npm registry URL
+          # @tomagranate/toolui -> @tomagranate%2Ftoolui
+          PACKAGE_URL="https://registry.npmjs.org/@tomagranate%2Ftoolui/${VERSION}"
           
-          # Check if version exists on npm
-          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://registry.npmjs.org/${PACKAGE_NAME}/${VERSION}")
+          echo "Checking npm registry: $PACKAGE_URL"
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$PACKAGE_URL")
+          echo "HTTP status: $HTTP_STATUS"
           
           if [ "$HTTP_STATUS" = "200" ]; then
-            echo "::error::Version ${VERSION} of ${PACKAGE_NAME} has already been published to npm."
+            echo "::error::Version ${VERSION} of @tomagranate/toolui has already been published to npm."
             echo "Use a different version or unpublish the existing version first."
             exit 1
           fi
