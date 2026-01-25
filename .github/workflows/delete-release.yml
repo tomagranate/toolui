@@ -18,6 +18,9 @@ jobs:
     outputs:
       version: ${{ steps.extract.outputs.version }}
       previous_tag: ${{ steps.previous.outputs.tag }}
+      github_release_exists: ${{ steps.check.outputs.github_release_exists }}
+      npm_version_exists: ${{ steps.check.outputs.npm_version_exists }}
+      is_latest_release: ${{ steps.latest.outputs.is_latest }}
     steps:
       - name: Validate tag format
         run: |
@@ -35,16 +38,58 @@ jobs:
           TAG="${{ github.event.inputs.tag }}"
           echo "version=${TAG#v}" >> $GITHUB_OUTPUT
 
-      - name: Check release exists
+      - name: Check what exists
+        id: check
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ github.event.inputs.tag }}"
-          if ! gh release view "$TAG" --repo "${{ github.repository }}" > /dev/null 2>&1; then
-            echo "::error::Release $TAG does not exist"
+          VERSION="${{ steps.extract.outputs.version }}"
+          
+          # Check GitHub release
+          if gh release view "$TAG" --repo "${{ github.repository }}" > /dev/null 2>&1; then
+            echo "GitHub release $TAG exists"
+            echo "github_release_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "GitHub release $TAG does not exist"
+            echo "github_release_exists=false" >> $GITHUB_OUTPUT
+          fi
+          
+          # Check npm version (URL-encode the scoped package name)
+          PACKAGE_URL="https://registry.npmjs.org/@tomagranate%2Ftoolui/${VERSION}"
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$PACKAGE_URL")
+          
+          if [ "$HTTP_STATUS" = "200" ]; then
+            echo "npm version ${VERSION} exists"
+            echo "npm_version_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "npm version ${VERSION} does not exist"
+            echo "npm_version_exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Verify something exists to delete
+        run: |
+          if [ "${{ steps.check.outputs.github_release_exists }}" != "true" ] && [ "${{ steps.check.outputs.npm_version_exists }}" != "true" ]; then
+            echo "::error::Neither GitHub release nor npm version exists for ${{ github.event.inputs.tag }}"
             exit 1
           fi
-          echo "Release $TAG exists"
+          echo "Found at least one artifact to delete"
+
+      - name: Check if deleting latest release
+        id: latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.event.inputs.tag }}"
+          LATEST_TAG=$(gh release list --repo "${{ github.repository }}" --limit 1 | awk -F'\t' '{print $3}')
+          
+          if [ "$TAG" = "$LATEST_TAG" ]; then
+            echo "Deleting the latest release - homebrew will be rolled back"
+            echo "is_latest=true" >> $GITHUB_OUTPUT
+          else
+            echo "Deleting an older release (latest is $LATEST_TAG) - homebrew will not be affected"
+            echo "is_latest=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Get previous release tag
         id: previous
@@ -70,6 +115,7 @@ jobs:
     name: Delete GitHub Release
     needs: validate-tag
     runs-on: ubuntu-latest
+    if: needs.validate-tag.outputs.github_release_exists == 'true'
     steps:
       - name: Delete release
         env:
@@ -93,43 +139,31 @@ jobs:
     name: Unpublish from NPM
     needs: validate-tag
     runs-on: ubuntu-latest
+    if: needs.validate-tag.outputs.npm_version_exists == 'true'
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Get package name
-        id: package
-        run: echo "name=$(jq -r .name package.json)" >> $GITHUB_OUTPUT
-
       - name: Unpublish from NPM
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          PACKAGE="${{ steps.package.outputs.name }}"
           VERSION="${{ needs.validate-tag.outputs.version }}"
+          PACKAGE="@tomagranate/toolui"
           
-          echo "Checking if ${PACKAGE}@${VERSION} exists on npm..."
-          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://registry.npmjs.org/${PACKAGE}/${VERSION}")
-          
-          if [ "$HTTP_STATUS" = "200" ]; then
-            echo "Unpublishing ${PACKAGE}@${VERSION}..."
-            npm unpublish "${PACKAGE}@${VERSION}" --force
-            echo "Unpublished successfully"
-          else
-            echo "Version ${VERSION} not found on npm (status: $HTTP_STATUS), skipping unpublish"
-          fi
+          echo "Unpublishing ${PACKAGE}@${VERSION}..."
+          npm unpublish "${PACKAGE}@${VERSION}" --force
+          echo "Unpublished successfully"
 
   rollback-homebrew:
     name: Rollback Homebrew Formula
-    needs: [validate-tag, delete-github-release]
+    needs: [validate-tag, delete-github-release, unpublish-npm]
+    # Only rollback homebrew if deleting the latest release, there's a previous tag, and at least one delete job succeeded
+    if: always() && needs.validate-tag.outputs.is_latest_release == 'true' && needs.validate-tag.outputs.previous_tag != '' && (needs.delete-github-release.result == 'success' || needs.unpublish-npm.result == 'success')
     runs-on: ubuntu-latest
-    if: needs.validate-tag.outputs.previous_tag != ''
     steps:
       - name: Extract previous version
         id: previous
