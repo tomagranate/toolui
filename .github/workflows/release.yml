@@ -1,0 +1,189 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: darwin
+            arch: arm64
+            runner: macos-latest
+            target: bun-darwin-arm64
+          - os: darwin
+            arch: x64
+            runner: macos-13
+            target: bun-darwin-x64
+          - os: linux
+            arch: x64
+            runner: ubuntu-latest
+            target: bun-linux-x64
+          - os: linux
+            arch: arm64
+            runner: ubuntu-latest
+            target: bun-linux-arm64
+          - os: windows
+            arch: x64
+            runner: ubuntu-latest
+            target: bun-windows-x64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build binary
+        run: |
+          mkdir -p dist
+          BINARY_NAME="toolui-${{ matrix.os }}-${{ matrix.arch }}"
+          if [ "${{ matrix.os }}" = "windows" ]; then
+            BINARY_NAME="${BINARY_NAME}.exe"
+          fi
+          bun build src/index.tsx --compile --minify --target=${{ matrix.target }} --outfile=dist/${BINARY_NAME}
+
+      - name: Create archive (Unix)
+        if: matrix.os != 'windows'
+        run: |
+          cd dist
+          BINARY_NAME="toolui-${{ matrix.os }}-${{ matrix.arch }}"
+          chmod +x ${BINARY_NAME}
+          tar -czvf ${BINARY_NAME}.tar.gz ${BINARY_NAME}
+          shasum -a 256 ${BINARY_NAME}.tar.gz > ${BINARY_NAME}.tar.gz.sha256
+
+      - name: Create archive (Windows)
+        if: matrix.os == 'windows'
+        run: |
+          cd dist
+          BINARY_NAME="toolui-${{ matrix.os }}-${{ matrix.arch }}.exe"
+          zip toolui-${{ matrix.os }}-${{ matrix.arch }}.zip ${BINARY_NAME}
+          shasum -a 256 toolui-${{ matrix.os }}-${{ matrix.arch }}.zip > toolui-${{ matrix.os }}-${{ matrix.arch }}.zip.sha256
+
+      - name: Upload artifacts (Unix)
+        if: matrix.os != 'windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: toolui-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            dist/toolui-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
+            dist/toolui-${{ matrix.os }}-${{ matrix.arch }}.tar.gz.sha256
+
+      - name: Upload artifacts (Windows)
+        if: matrix.os == 'windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: toolui-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            dist/toolui-${{ matrix.os }}-${{ matrix.arch }}.zip
+            dist/toolui-${{ matrix.os }}-${{ matrix.arch }}.zip.sha256
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release
+          find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" -o -name "*.sha256" \) -exec cp {} release/ \;
+          ls -la release/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          prerelease: ${{ contains(github.ref, '-') }}
+          generate_release_notes: true
+          files: release/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-npm:
+    name: Publish to NPM
+    needs: [build, release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Run checks
+        run: |
+          bun run typecheck
+          bun run check:nofix
+
+      - name: Publish to NPM
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  update-homebrew:
+    name: Update Homebrew Formula
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract version
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Download checksums
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          mkdir -p checksums
+          for platform in darwin-arm64 darwin-x64 linux-x64 linux-arm64; do
+            curl -sL "https://github.com/${{ github.repository }}/releases/download/v${VERSION}/toolui-${platform}.tar.gz.sha256" -o checksums/${platform}.sha256
+          done
+
+      - name: Trigger Homebrew tap update
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          repository: ${{ github.repository_owner }}/homebrew-toolui
+          event-type: update-formula
+          client-payload: |
+            {
+              "version": "${{ steps.version.outputs.version }}",
+              "darwin_arm64_sha256": "${{ env.DARWIN_ARM64_SHA256 }}",
+              "darwin_x64_sha256": "${{ env.DARWIN_X64_SHA256 }}",
+              "linux_x64_sha256": "${{ env.LINUX_X64_SHA256 }}",
+              "linux_arm64_sha256": "${{ env.LINUX_ARM64_SHA256 }}"
+            }
+        env:
+          DARWIN_ARM64_SHA256: ${{ hashFiles('checksums/darwin-arm64.sha256') }}
+          DARWIN_X64_SHA256: ${{ hashFiles('checksums/darwin-x64.sha256') }}
+          LINUX_X64_SHA256: ${{ hashFiles('checksums/linux-x64.sha256') }}
+          LINUX_ARM64_SHA256: ${{ hashFiles('checksums/linux-arm64.sha256') }}
+        continue-on-error: true

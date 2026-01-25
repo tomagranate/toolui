@@ -1,0 +1,68 @@
+# GitHub workflow for the homebrew-toolui tap repository
+# Copy this to .github/workflows/update-formula.yml in your homebrew-toolui repo
+
+name: Update Formula
+
+on:
+  repository_dispatch:
+    types: [update-formula]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to update to (without v prefix)'
+        required: true
+        type: string
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${{ github.event.client_payload.version }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Download and compute checksums
+        id: checksums
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          REPO="tomagranate/toolui"
+          
+          for platform in darwin-arm64 darwin-x64 linux-arm64 linux-x64; do
+            echo "Downloading toolui-${platform}.tar.gz..."
+            curl -sLO "https://github.com/${REPO}/releases/download/v${VERSION}/toolui-${platform}.tar.gz"
+            SHA=$(shasum -a 256 "toolui-${platform}.tar.gz" | cut -d' ' -f1)
+            echo "${platform}=${SHA}" >> $GITHUB_OUTPUT
+            rm "toolui-${platform}.tar.gz"
+          done
+
+      - name: Update formula
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          FORMULA="Formula/toolui.rb"
+          
+          # Update version
+          sed -i "s/version \".*\"/version \"${VERSION}\"/" "$FORMULA"
+          
+          # Update SHA256 checksums
+          # This is a simplified approach - you may need to adjust based on formula structure
+          sed -i "s|darwin-arm64.tar.gz\"\n  sha256 \".*\"|darwin-arm64.tar.gz\"\n  sha256 \"${{ steps.checksums.outputs.darwin-arm64 }}\"|" "$FORMULA"
+          sed -i "s|darwin-x64.tar.gz\"\n  sha256 \".*\"|darwin-x64.tar.gz\"\n  sha256 \"${{ steps.checksums.outputs.darwin-x64 }}\"|" "$FORMULA"
+          sed -i "s|linux-arm64.tar.gz\"\n  sha256 \".*\"|linux-arm64.tar.gz\"\n  sha256 \"${{ steps.checksums.outputs.linux-arm64 }}\"|" "$FORMULA"
+          sed -i "s|linux-x64.tar.gz\"\n  sha256 \".*\"|linux-x64.tar.gz\"\n  sha256 \"${{ steps.checksums.outputs.linux-x64 }}\"|" "$FORMULA"
+
+      - name: Commit and push
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/toolui.rb
+          git commit -m "Update toolui to v${VERSION}" || echo "No changes to commit"
+          git push

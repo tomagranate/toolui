@@ -4,16 +4,58 @@ A Terminal User Interface (TUI) for running multiple local development servers a
 
 ## Features
 
-- 🚀 Run multiple long-running CLI processes in separate tabs
-- 📊 View real-time logs for each process
-- 📱 Responsive UI: vertical tab bar on the right (wide terminals) or horizontal scrollable tab bar (narrow terminals)
-- 🧹 Automatic cleanup commands on exit
-- ⌨️ Keyboard shortcuts for navigation
+- Run multiple long-running CLI processes in separate tabs
+- View real-time logs for each process
+- Responsive UI: vertical tab bar on the right (wide terminals) or horizontal scrollable tab bar (narrow terminals)
+- Automatic cleanup commands on exit
+- Keyboard shortcuts for navigation
 
 ## Installation
 
+### Homebrew (macOS and Linux)
+
 ```bash
-bun install
+brew install tomagranate/toolui/toolui
+```
+
+### curl (macOS and Linux)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tomagranate/toolui/main/install.sh | bash
+```
+
+### NPM
+
+```bash
+# Install globally
+npm install -g toolui
+
+# Or run directly with npx
+npx toolui
+```
+
+### Manual Download
+
+Download the latest binary for your platform from the [Releases](https://github.com/tomagranate/toolui/releases) page.
+
+| Platform | Download |
+|----------|----------|
+| macOS (Apple Silicon) | `toolui-darwin-arm64.tar.gz` |
+| macOS (Intel) | `toolui-darwin-x64.tar.gz` |
+| Linux (x64) | `toolui-linux-x64.tar.gz` |
+| Linux (ARM64) | `toolui-linux-arm64.tar.gz` |
+| Windows (x64) | `toolui-windows-x64.zip` |
+
+After downloading, extract and move to a directory in your PATH:
+
+```bash
+# macOS/Linux
+tar -xzf toolui-darwin-arm64.tar.gz
+sudo mv toolui /usr/local/bin/
+
+# Windows (PowerShell)
+Expand-Archive toolui-windows-x64.zip
+Move-Item toolui-windows-x64\toolui.exe C:\Windows\System32\
 ```
 
 ## Configuration
@@ -67,10 +109,17 @@ cleanup = ["pkill -f worker.sh"]
 
 ```bash
 # Use default config file (toolui.config.toml)
-bun dev
+toolui
 
-# Or specify a custom config file
-bun dev path/to/config.toml
+# Specify a custom config file
+toolui --config path/to/config.toml
+toolui -c path/to/config.toml
+
+# Initialize a new config file in the current directory
+toolui init
+
+# Show help
+toolui --help
 ```
 
 ## Keyboard Shortcuts
@@ -139,8 +188,8 @@ To use with Cursor, add the following to your MCP configuration (`~/.cursor/mcp.
 {
   "mcpServers": {
     "toolui": {
-      "command": "bun",
-      "args": ["run", "/path/to/toolui/src/mcp-server.ts"],
+      "command": "toolui",
+      "args": ["mcp"],
       "env": {
         "TOOLUI_API_URL": "http://localhost:18765"
       }
@@ -148,8 +197,6 @@ To use with Cursor, add the following to your MCP configuration (`~/.cursor/mcp.
   }
 }
 ```
-
-Replace `/path/to/toolui` with the actual path to your toolui installation.
 
 ### Available MCP Tools
 
@@ -176,6 +223,28 @@ The API can also be used directly:
 ## Development
 
 ```bash
-# Run in watch mode
+# Install dependencies
+bun install
+
+# Run in development mode
 bun dev
+
+# Run tests
+bun test
+
+# Type check
+bun run typecheck
+
+# Lint and format
+bun run check
+
+# Build binary for current platform
+bun run build
+
+# Build binaries for all platforms
+bun run build:all
 ```
+
+## License
+
+MIT
