@@ -1,14 +1,18 @@
 # ToolUI
 
-A Terminal User Interface (TUI) for running multiple local development servers and tools simultaneously, built with [OpenTUI](https://github.com/anomalyco/opentui).
+A Terminal User Interface (TUI) for managing multiple local development processes. View real-time logs, monitor status, and control all your dev servers from a single dashboard.
 
-## Features
+Built with [OpenTUI](https://github.com/anomalyco/opentui).
 
-- Run multiple long-running CLI processes in separate tabs
-- View real-time logs for each process
-- Responsive UI: vertical tab bar on the right (wide terminals) or horizontal scrollable tab bar (narrow terminals)
-- Automatic cleanup commands on exit
-- Keyboard shortcuts for navigation
+## Why ToolUI?
+
+When working on a full-stack project, you often need to run multiple processes simultaneously—a frontend dev server, a backend API, database containers, workers, etc. ToolUI gives you:
+
+- **Single dashboard** for all your processes with tabbed log viewing
+- **Real-time logs** with search and ANSI color support
+- **Status monitoring** to see at a glance what's running, stopped, or crashed
+- **Health checks** to monitor service availability
+- **AI integration** via MCP to let your IDE assistant read logs and control processes
 
 ## Installation
 
@@ -18,25 +22,21 @@ A Terminal User Interface (TUI) for running multiple local development servers a
 brew install tomagranate/toolui/toolui
 ```
 
+### NPM
+
+```bash
+npm install -g toolui
+```
+
 ### curl (macOS and Linux)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/tomagranate/toolui/main/install.sh | bash
 ```
 
-### NPM
-
-```bash
-# Install globally
-npm install -g toolui
-
-# Or run directly with npx
-npx toolui
-```
-
 ### Manual Download
 
-Download the latest binary for your platform from the [Releases](https://github.com/tomagranate/toolui/releases) page.
+Download the latest binary for your platform from [Releases](https://github.com/tomagranate/toolui/releases).
 
 | Platform | Download |
 |----------|----------|
@@ -46,153 +46,161 @@ Download the latest binary for your platform from the [Releases](https://github.
 | Linux (ARM64) | `toolui-linux-arm64.tar.gz` |
 | Windows (x64) | `toolui-windows-x64.zip` |
 
-After downloading, extract and move to a directory in your PATH:
+## Quick Start
+
+1. Create a config file in your project:
 
 ```bash
-# macOS/Linux
-tar -xzf toolui-darwin-arm64.tar.gz
-sudo mv toolui /usr/local/bin/
+toolui init
+```
 
-# Windows (PowerShell)
-Expand-Archive toolui-windows-x64.zip
-Move-Item toolui-windows-x64\toolui.exe C:\Windows\System32\
+2. Edit `toolui.config.toml` to add your processes:
+
+```toml
+[[tools]]
+name = "frontend"
+command = "npm"
+args = ["run", "dev"]
+cwd = "./frontend"
+
+[[tools]]
+name = "backend"
+command = "python"
+args = ["-m", "uvicorn", "main:app", "--reload"]
+cwd = "./backend"
+```
+
+3. Start the dashboard:
+
+```bash
+toolui
+```
+
+## CLI Reference
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `toolui` | Start the TUI dashboard |
+| `toolui init` | Create a sample config file in the current directory |
+| `toolui mcp` | Start the MCP server for AI agent integration |
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `-c, --config <path>` | Path to config file (default: `toolui.config.toml`) |
+| `-h, --help` | Show help message |
+
+### Examples
+
+```bash
+# Start with default config
+toolui
+
+# Use a custom config file
+toolui --config ./configs/dev.toml
+toolui -c ./configs/dev.toml
+
+# Create a new config file
+toolui init
+
+# Start MCP server for AI integration
+toolui mcp
 ```
 
 ## Configuration
 
-Create a `toolui.config.toml` file in your project root:
+ToolUI is configured via a TOML file. By default, it looks for `toolui.config.toml` in the current directory.
+
+### Minimal Example
 
 ```toml
+[[tools]]
+name = "server"
+command = "npm"
+args = ["run", "dev"]
+```
+
+### Full Example
+
+```toml
+[home]
+enabled = true
+title = "My Project"
+
 [ui]
-sidebarPosition = "left"
-horizontalTabPosition = "top"
-widthThreshold = 100
+theme = "mist"
+showTabNumbers = true
+
+[mcp]
+enabled = true
 
 [[tools]]
-name = "web-server"
+name = "web"
 command = "npm"
 args = ["run", "dev"]
 cwd = "./web"
-cleanup = ["echo 'Cleaning up web server'"]
+description = "Next.js frontend"
+
+[tools.ui]
+label = "Open App"
+url = "http://localhost:3000"
+
+[tools.healthCheck]
+url = "http://localhost:3000/api/health"
+interval = 5000
 
 [[tools]]
-name = "api-server"
-command = "python"
-args = ["-u", "server.py"]
+name = "api"
+command = "cargo"
+args = ["watch", "-x", "run"]
 cwd = "./api"
-cleanup = []
+description = "Rust API server"
+cleanup = ["pkill -f 'target/debug/api'"]
 
-[[tools]]
-name = "worker"
-command = "./worker.sh"
-args = []
-cleanup = ["pkill -f worker.sh"]
+[tools.env]
+RUST_LOG = "debug"
 ```
 
-### Config Fields
+For a complete reference of all configuration options, see the [sample config file](src/sample-config.toml).
 
-#### UI Options (optional)
-- `ui.sidebarPosition` (optional): Position of vertical sidebar for wide terminals. Options: `"left"` (default) or `"right"`
-- `ui.horizontalTabPosition` (optional): Position of horizontal tabs for narrow terminals. Options: `"top"` (default) or `"bottom"`
-- `ui.widthThreshold` (optional): Terminal width threshold (in columns) for switching between vertical and horizontal layouts. Default: `100`
-- `ui.theme` (optional): Color theme name. Options: `"default"`, `"dracula"`, `"nord"`, `"onedark"`, `"solarized"`, `"gruvbox"`, `"catppuccin"`. Default: `"default"`
 
-#### Tool Fields
-- `name` (required): Display name for the tab
-- `command` (required): Command to execute
-- `args` (optional): Array of command arguments
-- `cwd` (optional): Working directory for the command
-- `env` (optional): Environment variables as key-value pairs
-- `cleanup` (optional): Array of shell commands to run on exit
-
-## Usage
-
-```bash
-# Use default config file (toolui.config.toml)
-toolui
-
-# Specify a custom config file
-toolui --config path/to/config.toml
-toolui -c path/to/config.toml
-
-# Initialize a new config file in the current directory
-toolui init
-
-# Show help
-toolui --help
-```
-
-## Keyboard Shortcuts
-
-- `q` - Quit (runs cleanup commands)
-- `Ctrl+C` - Quit (runs cleanup commands)
-- `←` / `→` or `h` / `l` - Switch between tabs
-- `↑` / `↓` or `k` / `j` - Switch between tabs (vertical mode)
-- `1-9` - Jump to tab by number
-
-## UI Layout
-
-- **Wide terminals (≥100 columns by default)**: Vertical tab bar sidebar (left by default, configurable)
-- **Narrow terminals (<100 columns by default)**: Horizontal scrollable tab bar (top by default, configurable)
-
-The layout automatically switches based on terminal width. You can configure:
-- Sidebar position (left/right) for wide terminals
-- Tab bar position (top/bottom) for narrow terminals
-- Width threshold for switching between layouts
-
-## Status Indicators
-
-- `●` - Process is running
-- `○` - Process is stopped
-- `✗` - Process exited with error
 
 ## Themes
 
-ToolUI supports multiple color themes based on popular terminal color schemes. Set the `ui.theme` option in your config file to use a theme:
+ToolUI includes several built-in themes. Set in your config:
 
-- `default` - Classic terminal colors (black background, blue active tabs)
-- `dracula` - Dracula theme (purple/pink accents)
-- `nord` - Nord theme (cool blue/gray palette)
-- `onedark` - One Dark theme (dark blue/green palette)
-- `solarized` - Solarized Dark theme (blue/yellow palette)
-- `gruvbox` - Gruvbox theme (warm colors)
-- `catppuccin` - Catppuccin Mocha theme (pastel colors)
-
-Example:
 ```toml
 [ui]
-theme = "dracula"
+theme = "mist"
 ```
 
-## MCP Integration (AI Agent Support)
+Available themes: `default` (Moss), `mist`, `cappuccino`, `synthwave`, `terminal` (auto-detect from your terminal).
 
-ToolUI can expose an HTTP API that allows AI agents (like Cursor, Claude, etc.) to read process logs and control processes via the Model Context Protocol (MCP).
+## MCP Integration
 
-### Enabling MCP
+ToolUI can expose an HTTP API for AI agents (Cursor, Claude, etc.) via the Model Context Protocol.
 
-Add the `[mcp]` section to your config file:
+### Enable in Config
 
 ```toml
 [mcp]
 enabled = true
-port = 18765  # optional, defaults to 18765
+port = 18765
 ```
 
-When enabled, a new "MCP API" tab will appear showing API server logs. The HTTP API will be available at `http://localhost:18765`.
+### Configure Your IDE
 
-### Cursor Integration
-
-To use with Cursor, add the following to your MCP configuration (`~/.cursor/mcp.json`):
+Add to your MCP configuration (e.g., `~/.cursor/mcp.json`):
 
 ```json
 {
   "mcpServers": {
     "toolui": {
       "command": "toolui",
-      "args": ["mcp"],
-      "env": {
-        "TOOLUI_API_URL": "http://localhost:18765"
-      }
+      "args": ["mcp"]
     }
   }
 }
@@ -203,47 +211,14 @@ To use with Cursor, add the following to your MCP configuration (`~/.cursor/mcp.
 | Tool | Description |
 |------|-------------|
 | `list_processes` | List all processes with their status |
-| `get_logs` | Get recent logs from a process (supports search and line limits) |
+| `get_logs` | Get recent logs (supports search and line limits) |
 | `stop_process` | Stop a running process |
 | `restart_process` | Restart a process |
 | `clear_logs` | Clear logs for a process |
 
-### HTTP API Endpoints
+## Contributing
 
-The API can also be used directly:
-
-- `GET /api/health` - Health check
-- `GET /api/processes` - List all processes
-- `GET /api/processes/:name` - Get process details
-- `GET /api/processes/:name/logs?lines=100&search=error&searchType=substring` - Get logs
-- `POST /api/processes/:name/stop` - Stop a process
-- `POST /api/processes/:name/restart` - Restart a process
-- `POST /api/processes/:name/clear` - Clear logs
-
-## Development
-
-```bash
-# Install dependencies
-bun install
-
-# Run in development mode
-bun dev
-
-# Run tests
-bun test
-
-# Type check
-bun run typecheck
-
-# Lint and format
-bun run check
-
-# Build binary for current platform
-bun run build
-
-# Build binaries for all platforms
-bun run build:all
-```
+See the [Contributing Guide](CONTRIBUTING.md) for development setup and guidelines.
 
 ## License
 
