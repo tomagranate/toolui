@@ -632,12 +632,12 @@ describe("ProcessManager", () => {
 		await processManager.initialize(configs);
 
 		const result = processManager.getToolByName("log-test");
-		expect(result).toBeDefined();
+		if (!result) throw new Error("Expected log-test to exist");
 
-		processManager.addLogToTool(result!.index, "First log message");
-		processManager.addLogToTool(result!.index, "Second log message");
+		processManager.addLogToTool(result.index, "First log message");
+		processManager.addLogToTool(result.index, "Second log message");
 
-		const tool = processManager.getTool(result!.index);
+		const tool = processManager.getTool(result.index);
 		expect(tool?.logs.length).toBe(2);
 		expect(tool?.logs[0]?.segments[0]?.text).toBe("First log message");
 		expect(tool?.logs[1]?.segments[0]?.text).toBe("Second log message");

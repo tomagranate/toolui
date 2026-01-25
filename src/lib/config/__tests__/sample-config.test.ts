@@ -230,7 +230,9 @@ describe("Sample config validation", () => {
 		const toolWithHealthCheck = tools.find((t) => t.healthCheck);
 		expect(toolWithHealthCheck).toBeDefined();
 
-		const healthCheck = toolWithHealthCheck!.healthCheck as Record<
+		if (!toolWithHealthCheck)
+			throw new Error("Expected tool with healthCheck to exist");
+		const healthCheck = toolWithHealthCheck.healthCheck as Record<
 			string,
 			unknown
 		>;
@@ -268,7 +270,8 @@ describe("Sample config validation", () => {
 		);
 		expect(toolWithUI).toBeDefined();
 
-		const ui = toolWithUI!.ui as Record<string, unknown>;
+		if (!toolWithUI) throw new Error("Expected tool with UI to exist");
+		const ui = toolWithUI.ui as Record<string, unknown>;
 		const uiKeys = Object.keys(ui);
 
 		// Check all expected keys are present

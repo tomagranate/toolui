@@ -18,6 +18,19 @@ class ToastStore extends EventEmitter {
 	private pendingToasts: ToastMessage[] = [];
 
 	/**
+	 * Remove all listeners and clear any pending toasts.
+	 * Overrides EventEmitter.removeAllListeners to also clear the pending queue.
+	 */
+	override removeAllListeners(eventName?: string | symbol): this {
+		super.removeAllListeners(eventName);
+		// Also clear pending toasts when removing all listeners
+		if (!eventName || eventName === "toast") {
+			this.pendingToasts = [];
+		}
+		return this;
+	}
+
+	/**
 	 * Show a toast notification
 	 */
 	show(

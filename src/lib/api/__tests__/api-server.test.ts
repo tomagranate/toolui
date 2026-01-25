@@ -189,10 +189,11 @@ describe("ApiServer", () => {
 		test("returns logs for a process", async () => {
 			// Add some logs to test with
 			const result = processManager.getToolByName("test-process");
-			processManager.clearLogs(result!.index);
-			processManager.addLogToTool(result!.index, "unique-log-marker-1");
-			processManager.addLogToTool(result!.index, "unique-log-marker-2");
-			processManager.addLogToTool(result!.index, "unique-log-marker-3");
+			if (!result) throw new Error("Expected test-process to exist");
+			processManager.clearLogs(result.index);
+			processManager.addLogToTool(result.index, "unique-log-marker-1");
+			processManager.addLogToTool(result.index, "unique-log-marker-2");
+			processManager.addLogToTool(result.index, "unique-log-marker-3");
 
 			const response = await fetch(apiUrl("/api/processes/test-process/logs"));
 			const json = (await response.json()) as ApiResponse;
@@ -210,12 +211,13 @@ describe("ApiServer", () => {
 
 		test("respects lines parameter (returns last N lines)", async () => {
 			const result = processManager.getToolByName("test-process");
-			processManager.clearLogs(result!.index);
-			processManager.addLogToTool(result!.index, "lines-test-A");
-			processManager.addLogToTool(result!.index, "lines-test-B");
-			processManager.addLogToTool(result!.index, "lines-test-C");
-			processManager.addLogToTool(result!.index, "lines-test-D");
-			processManager.addLogToTool(result!.index, "lines-test-E");
+			if (!result) throw new Error("Expected test-process to exist");
+			processManager.clearLogs(result.index);
+			processManager.addLogToTool(result.index, "lines-test-A");
+			processManager.addLogToTool(result.index, "lines-test-B");
+			processManager.addLogToTool(result.index, "lines-test-C");
+			processManager.addLogToTool(result.index, "lines-test-D");
+			processManager.addLogToTool(result.index, "lines-test-E");
 
 			const response = await fetch(
 				apiUrl("/api/processes/test-process/logs?lines=2"),
@@ -232,12 +234,13 @@ describe("ApiServer", () => {
 
 		test("filters logs with substring search", async () => {
 			const result = processManager.getToolByName("test-process");
-			processManager.clearLogs(result!.index);
-			processManager.addLogToTool(result!.index, "[INFO] Starting server");
-			processManager.addLogToTool(result!.index, "[ERROR] Connection failed");
-			processManager.addLogToTool(result!.index, "[INFO] Retrying...");
-			processManager.addLogToTool(result!.index, "[ERROR] Timeout occurred");
-			processManager.addLogToTool(result!.index, "[INFO] Success!");
+			if (!result) throw new Error("Expected test-process to exist");
+			processManager.clearLogs(result.index);
+			processManager.addLogToTool(result.index, "[INFO] Starting server");
+			processManager.addLogToTool(result.index, "[ERROR] Connection failed");
+			processManager.addLogToTool(result.index, "[INFO] Retrying...");
+			processManager.addLogToTool(result.index, "[ERROR] Timeout occurred");
+			processManager.addLogToTool(result.index, "[INFO] Success!");
 
 			const response = await fetch(
 				apiUrl(
@@ -254,11 +257,12 @@ describe("ApiServer", () => {
 
 		test("filters logs with fuzzy search", async () => {
 			const result = processManager.getToolByName("test-process");
-			processManager.clearLogs(result!.index);
-			processManager.addLogToTool(result!.index, "Database connected");
-			processManager.addLogToTool(result!.index, "User logged in");
-			processManager.addLogToTool(result!.index, "Data saved to database");
-			processManager.addLogToTool(result!.index, "Request completed");
+			if (!result) throw new Error("Expected test-process to exist");
+			processManager.clearLogs(result.index);
+			processManager.addLogToTool(result.index, "Database connected");
+			processManager.addLogToTool(result.index, "User logged in");
+			processManager.addLogToTool(result.index, "Data saved to database");
+			processManager.addLogToTool(result.index, "Request completed");
 
 			const response = await fetch(
 				apiUrl(
@@ -278,12 +282,13 @@ describe("ApiServer", () => {
 
 		test("combines search and lines parameters", async () => {
 			const result = processManager.getToolByName("test-process");
-			processManager.clearLogs(result!.index);
-			processManager.addLogToTool(result!.index, "[ERROR] Error 1");
-			processManager.addLogToTool(result!.index, "[INFO] Info 1");
-			processManager.addLogToTool(result!.index, "[ERROR] Error 2");
-			processManager.addLogToTool(result!.index, "[INFO] Info 2");
-			processManager.addLogToTool(result!.index, "[ERROR] Error 3");
+			if (!result) throw new Error("Expected test-process to exist");
+			processManager.clearLogs(result.index);
+			processManager.addLogToTool(result.index, "[ERROR] Error 1");
+			processManager.addLogToTool(result.index, "[INFO] Info 1");
+			processManager.addLogToTool(result.index, "[ERROR] Error 2");
+			processManager.addLogToTool(result.index, "[INFO] Info 2");
+			processManager.addLogToTool(result.index, "[ERROR] Error 3");
 
 			const response = await fetch(
 				apiUrl("/api/processes/test-process/logs?search=ERROR&lines=2"),
@@ -300,7 +305,8 @@ describe("ApiServer", () => {
 		test("returns empty logs array when no logs exist", async () => {
 			// Use a different process that hasn't been touched by other tests
 			const result = processManager.getToolByName("no-description");
-			processManager.clearLogs(result!.index);
+			if (!result) throw new Error("Expected no-description to exist");
+			processManager.clearLogs(result.index);
 
 			const response = await fetch(
 				apiUrl("/api/processes/no-description/logs"),
@@ -330,10 +336,11 @@ describe("ApiServer", () => {
 		test("stops a running process", async () => {
 			// Start the process first
 			const result = processManager.getToolByName("long-running");
-			await processManager.startTool(result!.index);
+			if (!result) throw new Error("Expected long-running to exist");
+			await processManager.startTool(result.index);
 			await new Promise((resolve) => setTimeout(resolve, 100));
 
-			expect(processManager.getTool(result!.index)?.status).toBe("running");
+			expect(processManager.getTool(result.index)?.status).toBe("running");
 
 			const response = await fetch(apiUrl("/api/processes/long-running/stop"), {
 				method: "POST",
@@ -349,8 +356,9 @@ describe("ApiServer", () => {
 		test("returns 400 when process not running", async () => {
 			// Ensure process is stopped
 			const result = processManager.getToolByName("test-process");
-			if (processManager.getTool(result!.index)?.status === "running") {
-				await processManager.stopTool(result!.index);
+			if (!result) throw new Error("Expected test-process to exist");
+			if (processManager.getTool(result.index)?.status === "running") {
+				await processManager.stopTool(result.index);
 			}
 
 			const response = await fetch(apiUrl("/api/processes/test-process/stop"), {
@@ -381,8 +389,9 @@ describe("ApiServer", () => {
 		test("restarts a stopped process", async () => {
 			// Ensure process is stopped first
 			const result = processManager.getToolByName("long-running");
-			if (processManager.getTool(result!.index)?.status === "running") {
-				await processManager.stopTool(result!.index);
+			if (!result) throw new Error("Expected long-running to exist");
+			if (processManager.getTool(result.index)?.status === "running") {
+				await processManager.stopTool(result.index);
 				await new Promise((resolve) => setTimeout(resolve, 100));
 			}
 
@@ -399,18 +408,19 @@ describe("ApiServer", () => {
 
 			// Wait and verify it's running
 			await new Promise((resolve) => setTimeout(resolve, 100));
-			expect(processManager.getTool(result!.index)?.status).toBe("running");
+			expect(processManager.getTool(result.index)?.status).toBe("running");
 		});
 
 		test("restarts a running process (gets new PID)", async () => {
 			const result = processManager.getToolByName("long-running");
+			if (!result) throw new Error("Expected long-running to exist");
 
 			// Make sure it's running
-			if (processManager.getTool(result!.index)?.status !== "running") {
-				await processManager.startTool(result!.index);
+			if (processManager.getTool(result.index)?.status !== "running") {
+				await processManager.startTool(result.index);
 				await new Promise((resolve) => setTimeout(resolve, 100));
 			}
-			const oldPid = processManager.getTool(result!.index)?.pid;
+			const oldPid = processManager.getTool(result.index)?.pid;
 
 			const response = await fetch(
 				apiUrl("/api/processes/long-running/restart"),
@@ -423,7 +433,7 @@ describe("ApiServer", () => {
 
 			// Wait for restart
 			await new Promise((resolve) => setTimeout(resolve, 200));
-			const newPid = processManager.getTool(result!.index)?.pid;
+			const newPid = processManager.getTool(result.index)?.pid;
 			expect(newPid).toBeDefined();
 			expect(newPid).not.toBe(oldPid);
 		});
@@ -447,11 +457,12 @@ describe("ApiServer", () => {
 		test("clears logs for a process", async () => {
 			// Add some logs first
 			const result = processManager.getToolByName("test-process");
-			processManager.addLogToTool(result!.index, "log to clear 1");
-			processManager.addLogToTool(result!.index, "log to clear 2");
-			expect(
-				processManager.getTool(result!.index)?.logs.length,
-			).toBeGreaterThan(0);
+			if (!result) throw new Error("Expected test-process to exist");
+			processManager.addLogToTool(result.index, "log to clear 1");
+			processManager.addLogToTool(result.index, "log to clear 2");
+			expect(processManager.getTool(result.index)?.logs.length).toBeGreaterThan(
+				0,
+			);
 
 			const response = await fetch(
 				apiUrl("/api/processes/test-process/clear"),
@@ -465,13 +476,14 @@ describe("ApiServer", () => {
 			expect(data.message).toContain("Cleared");
 
 			// Verify logs are cleared
-			expect(processManager.getTool(result!.index)?.logs.length).toBe(0);
+			expect(processManager.getTool(result.index)?.logs.length).toBe(0);
 		});
 
 		test("succeeds even when no logs exist", async () => {
 			const result = processManager.getToolByName("test-process");
-			processManager.clearLogs(result!.index);
-			expect(processManager.getTool(result!.index)?.logs.length).toBe(0);
+			if (!result) throw new Error("Expected test-process to exist");
+			processManager.clearLogs(result.index);
+			expect(processManager.getTool(result.index)?.logs.length).toBe(0);
 
 			const response = await fetch(
 				apiUrl("/api/processes/test-process/clear"),
