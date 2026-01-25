@@ -29,6 +29,8 @@ export interface ToolConfig {
 	healthCheck?: ToolHealthCheck;
 	/** Optional UI link configuration */
 	ui?: ToolUI;
+	/** Tool names that must be ready before this tool starts */
+	dependsOn?: string[];
 }
 
 export interface TextSegment {
@@ -51,7 +53,7 @@ export interface ToolState {
 	config: ToolConfig;
 	process: ReturnType<typeof Bun.spawn> | null;
 	logs: LogLine[]; // Array of log lines with metadata
-	status: "running" | "stopped" | "error" | "shuttingDown";
+	status: "running" | "stopped" | "error" | "shuttingDown" | "waiting";
 	exitCode: number | null;
 	pid?: number; // Process ID for persistence
 	startTime?: number; // Unix timestamp when process started

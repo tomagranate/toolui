@@ -1,6 +1,10 @@
 import type { ToolConfig, ToolState } from "../../types";
 import { parseAnsiLine } from "../text";
 import {
+	getValidDependencies,
+	resolveDependencies,
+} from "./dependency-resolver";
+import {
 	deletePidFile,
 	loadPidFile,
 	type PidFileEntry,
@@ -8,6 +12,15 @@ import {
 	updatePidFile,
 } from "./pid-file";
 import { isProcessRunning, killProcessGracefully } from "./process-utils";
+
+/** Callback to check if a tool is ready (for dependency waiting) */
+export type IsToolReadyCallback = (toolName: string) => boolean;
+
+/** Default timeout for waiting on dependencies (30 seconds) */
+const DEFAULT_DEPENDENCY_TIMEOUT = 30000;
+
+/** Polling interval for checking dependency readiness */
+const DEPENDENCY_POLL_INTERVAL = 500;
 
 export class ProcessManager {
 	private tools: ToolState[] = [];
@@ -513,5 +526,100 @@ export class ProcessManager {
 
 		// Log cleanup actions (will be visible when tools start)
 		console.log(cleanupLog.join("\n"));
+	}
+
+	/**
+	 * Start all tools respecting dependency order.
+	 * Tools with no dependencies start immediately.
+	 * Tools with dependencies wait for them to be ready before starting.
+	 *
+	 * @param isToolReady - Callback to check if a tool is ready (healthy or running)
+	 * @param timeout - Maximum time to wait for dependencies (default: 30s)
+	 */
+	async startAllToolsWithDependencies(
+		isToolReady: IsToolReadyCallback,
+		timeout: number = DEFAULT_DEPENDENCY_TIMEOUT,
+	): Promise<void> {
+		const toolNames = new Set(this.tools.map((t) => t.config.name));
+		const { levels } = resolveDependencies(this.tools.map((t) => t.config));
+
+		// Mark all tools with dependencies as "waiting" before starting
+		for (const tool of this.tools) {
+			const deps = getValidDependencies(tool.config, toolNames);
+			if (deps.length > 0) {
+				tool.status = "waiting";
+			}
+		}
+
+		// Start tools level by level
+		for (let levelIdx = 0; levelIdx < levels.length; levelIdx++) {
+			const level = levels[levelIdx];
+			if (!level || level.length === 0) continue;
+
+			// Start all tools in this level in parallel
+			const startPromises = level.map(async (config) => {
+				const index = this.tools.findIndex(
+					(t) => t.config.name === config.name,
+				);
+				if (index === -1) return;
+
+				const tool = this.tools[index];
+				if (!tool) return;
+
+				// Wait for dependencies to be ready
+				const deps = getValidDependencies(config, toolNames);
+				if (deps.length > 0) {
+					this.addLog(
+						index,
+						`[DEPS] Waiting for dependencies: ${deps.join(", ")}`,
+					);
+
+					const ready = await this.waitForDependencies(
+						deps,
+						isToolReady,
+						timeout,
+					);
+
+					if (!ready) {
+						this.addLog(
+							index,
+							`[DEPS] Warning: Some dependencies not ready after ${timeout / 1000}s, starting anyway`,
+						);
+					} else {
+						this.addLog(index, "[DEPS] All dependencies ready");
+					}
+				}
+
+				// Start the tool
+				await this.startTool(index);
+			});
+
+			// Wait for all tools in this level to start
+			await Promise.all(startPromises);
+		}
+	}
+
+	/**
+	 * Wait for all dependencies to be ready.
+	 * Returns true if all are ready, false if timeout.
+	 */
+	private async waitForDependencies(
+		deps: string[],
+		isToolReady: IsToolReadyCallback,
+		timeout: number,
+	): Promise<boolean> {
+		const startTime = Date.now();
+
+		while (Date.now() - startTime < timeout) {
+			const allReady = deps.every((dep) => isToolReady(dep));
+			if (allReady) return true;
+
+			// Wait before checking again
+			await new Promise((resolve) =>
+				setTimeout(resolve, DEPENDENCY_POLL_INTERVAL),
+			);
+		}
+
+		return false;
 	}
 }

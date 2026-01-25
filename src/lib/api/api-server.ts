@@ -23,7 +23,7 @@ type ApiResponse<T> = ApiSuccessResponse<T> | ApiErrorResponse;
 interface ProcessSummary {
 	name: string;
 	description?: string;
-	status: "running" | "stopped" | "error" | "shuttingDown";
+	status: "running" | "stopped" | "error" | "shuttingDown" | "waiting";
 	exitCode: number | null;
 	logCount: number;
 	pid?: number;

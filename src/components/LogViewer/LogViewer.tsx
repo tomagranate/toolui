@@ -753,11 +753,13 @@ export const LogViewer = React.memo(function LogViewer({
 						<text fg={colors.text}>
 							{tool.status === "running"
 								? "Waiting for output..."
-								: tool.status === "shuttingDown"
-									? "Shutting down gracefully..."
-									: tool.status === "error"
-										? `Process error (exit code: ${tool.exitCode ?? "unknown"})`
-										: "Process not started"}
+								: tool.status === "waiting"
+									? "Waiting for dependencies..."
+									: tool.status === "shuttingDown"
+										? "Shutting down gracefully..."
+										: tool.status === "error"
+											? `Process error (exit code: ${tool.exitCode ?? "unknown"})`
+											: "Process not started"}
 						</text>
 					</box>
 				) : (

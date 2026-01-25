@@ -52,15 +52,24 @@ export function HomeTab({
 		);
 
 	// Calculate status counts for summary
+	// Note: "waiting" tools are excluded from health-based counts (starting/unhealthy)
+	// since they haven't started yet and health checks don't apply
 	const statusCounts = {
 		running: servicesWithFeatures.filter(
 			({ tool }) => tool.status === "running",
 		).length,
+		waiting: servicesWithFeatures.filter(
+			({ tool }) => tool.status === "waiting",
+		).length,
 		starting: servicesWithFeatures.filter(
-			({ tool }) => healthStates.get(tool.config.name)?.status === "starting",
+			({ tool }) =>
+				tool.status !== "waiting" &&
+				healthStates.get(tool.config.name)?.status === "starting",
 		).length,
 		unhealthy: servicesWithFeatures.filter(
-			({ tool }) => healthStates.get(tool.config.name)?.status === "unhealthy",
+			({ tool }) =>
+				tool.status !== "waiting" &&
+				healthStates.get(tool.config.name)?.status === "unhealthy",
 		).length,
 		stopped: servicesWithFeatures.filter(
 			({ tool }) => tool.status === "stopped" || tool.status === "error",
@@ -116,7 +125,11 @@ export function HomeTab({
 
 			{/* Status Summary Bar */}
 			{servicesWithFeatures.length > 0 && (
-				<StatusSummary counts={statusCounts} theme={theme} />
+				<StatusSummary
+					counts={statusCounts}
+					theme={theme}
+					centered={titleAlign === "center"}
+				/>
 			)}
 
 			{/* Services Grid */}
@@ -173,14 +186,16 @@ export function HomeTab({
 interface StatusSummaryProps {
 	counts: {
 		running: number;
+		waiting: number;
 		starting: number;
 		unhealthy: number;
 		stopped: number;
 	};
 	theme: Theme;
+	centered?: boolean;
 }
 
-function StatusSummary({ counts, theme }: StatusSummaryProps) {
+function StatusSummary({ counts, theme, centered }: StatusSummaryProps) {
 	const { colors } = theme;
 
 	const parts: Array<{ count: number; label: string; color: string }> = [];
@@ -190,6 +205,13 @@ function StatusSummary({ counts, theme }: StatusSummaryProps) {
 			count: counts.running,
 			label: "running",
 			color: colors.success,
+		});
+	}
+	if (counts.waiting > 0) {
+		parts.push({
+			count: counts.waiting,
+			label: "waiting",
+			color: colors.warning,
 		});
 	}
 	if (counts.starting > 0) {
@@ -219,7 +241,11 @@ function StatusSummary({ counts, theme }: StatusSummaryProps) {
 	}
 
 	return (
-		<box height={1} flexDirection="row">
+		<box
+			height={1}
+			flexDirection="row"
+			justifyContent={centered ? "center" : "flex-start"}
+		>
 			{parts.map((part, i) => (
 				<text key={part.label} fg={part.color}>
 					{part.count} {part.label}
@@ -291,14 +317,21 @@ function ServiceCard({
 						{uptimeText && <text fg={colors.textDim}> · {uptimeText}</text>}
 					</box>
 
-					{/* Health indicator on the right */}
-					{hasHealthCheck && healthState && (
+					{/* Health indicator on the right - show "waiting" when waiting for deps */}
+					{tool.status === "waiting" ? (
 						<box>
-							<HealthStatusIndicator
-								status={healthState.status}
-								theme={theme}
-							/>
+							<text fg={colors.warning}>{StatusIcons.WAITING} waiting</text>
 						</box>
+					) : (
+						hasHealthCheck &&
+						healthState && (
+							<box>
+								<HealthStatusIndicator
+									status={healthState.status}
+									theme={theme}
+								/>
+							</box>
+						)
 					)}
 				</box>
 
@@ -354,6 +387,8 @@ function ProcessStatusIcon({ status, theme }: ProcessStatusIconProps) {
 				return { icon: StatusIcons.WARNING, color: colors.warning };
 			case "error":
 				return { icon: StatusIcons.ERROR, color: colors.error };
+			case "waiting":
+				return { icon: StatusIcons.WAITING, color: colors.warning };
 			default:
 				return { icon: StatusIcons.STOPPED, color: colors.textMuted };
 		}

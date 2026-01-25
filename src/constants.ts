@@ -13,6 +13,8 @@ export const StatusIcons = {
 	ERROR: "✗",
 	/** Warning/shutting down indicator (U+25B3 WHITE UP-POINTING TRIANGLE) */
 	WARNING: "△",
+	/** Waiting for dependencies indicator (U+25D4 CIRCLE WITH UPPER RIGHT QUADRANT BLACK) */
+	WAITING: "◔",
 } as const;
 
 /**

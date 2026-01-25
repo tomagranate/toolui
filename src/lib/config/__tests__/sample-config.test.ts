@@ -9,7 +9,10 @@ import { parse as parseToml } from "@iarna/toml";
  *
  * When adding new config options:
  * 1. Add the key to the appropriate array below
- * 2. Add the option to src/sample-config.toml with documentation
+ * 2. Add the option to src/sample-config-full.toml with documentation
+ *
+ * Note: sample-config.toml is the minimal version for `toolui init`
+ *       sample-config-full.toml is the comprehensive documentation version
  */
 
 // From src/lib/config/types.ts - Config interface
@@ -48,6 +51,7 @@ const TOOL_CONFIG_KEYS = [
 	"description",
 	"healthCheck",
 	"ui",
+	"dependsOn",
 ] as const;
 
 // From src/types.ts - ToolHealthCheck interface
@@ -66,7 +70,7 @@ describe("Sample config validation", () => {
 			"..",
 			"..",
 			"..",
-			"sample-config.toml",
+			"sample-config-full.toml",
 		);
 		const content = await readFile(samplePath, "utf-8");
 		sampleConfig = parseToml(content) as Record<string, unknown>;
@@ -81,7 +85,7 @@ describe("Sample config validation", () => {
 			"..",
 			"..",
 			"..",
-			"sample-config.toml",
+			"sample-config-full.toml",
 		);
 		const content = await readFile(samplePath, "utf-8");
 		const config = parseToml(content) as Record<string, unknown>;
@@ -105,7 +109,7 @@ describe("Sample config validation", () => {
 			"..",
 			"..",
 			"..",
-			"sample-config.toml",
+			"sample-config-full.toml",
 		);
 		const content = await readFile(samplePath, "utf-8");
 		const config = parseToml(content) as Record<string, unknown>;
@@ -132,7 +136,7 @@ describe("Sample config validation", () => {
 			"..",
 			"..",
 			"..",
-			"sample-config.toml",
+			"sample-config-full.toml",
 		);
 		const content = await readFile(samplePath, "utf-8");
 		const config = parseToml(content) as Record<string, unknown>;
@@ -159,7 +163,7 @@ describe("Sample config validation", () => {
 			"..",
 			"..",
 			"..",
-			"sample-config.toml",
+			"sample-config-full.toml",
 		);
 		const content = await readFile(samplePath, "utf-8");
 		const config = parseToml(content) as Record<string, unknown>;
@@ -184,7 +188,7 @@ describe("Sample config validation", () => {
 			"..",
 			"..",
 			"..",
-			"sample-config.toml",
+			"sample-config-full.toml",
 		);
 		const content = await readFile(samplePath, "utf-8");
 		const config = parseToml(content) as Record<string, unknown>;
@@ -219,7 +223,7 @@ describe("Sample config validation", () => {
 			"..",
 			"..",
 			"..",
-			"sample-config.toml",
+			"sample-config-full.toml",
 		);
 		const content = await readFile(samplePath, "utf-8");
 		const config = parseToml(content) as Record<string, unknown>;
@@ -257,7 +261,7 @@ describe("Sample config validation", () => {
 			"..",
 			"..",
 			"..",
-			"sample-config.toml",
+			"sample-config-full.toml",
 		);
 		const content = await readFile(samplePath, "utf-8");
 		const config = parseToml(content) as Record<string, unknown>;
@@ -291,7 +295,7 @@ describe("Sample config validation", () => {
 			"..",
 			"..",
 			"..",
-			"sample-config.toml",
+			"sample-config-full.toml",
 		);
 		const content = await readFile(samplePath, "utf-8");
 		const config = parseToml(content) as Record<string, unknown>;

@@ -2,7 +2,7 @@ import { createCliRenderer } from "@opentui/core";
 import { createRoot } from "@opentui/react";
 import { createElement } from "react";
 import { App } from "./App";
-import { getHelpText, parseArgs } from "./cli";
+import { getHelpText, getVersion, parseArgs } from "./cli";
 import { runInit, runMcp } from "./commands";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { toast } from "./components/Toast";
@@ -28,6 +28,13 @@ async function main() {
 	// Handle --help
 	if (args.showHelp) {
 		console.log(getHelpText());
+		process.exit(0);
+	}
+
+	// Handle --version
+	if (args.showVersion) {
+		const version = await getVersion();
+		console.log(`toolui v${version}`);
 		process.exit(0);
 	}
 

@@ -1,0 +1,158 @@
+# toolui Configuration Reference
+# ==============================
+# This file documents ALL available configuration options.
+# For a minimal starter config, run: toolui init
+
+# ------------------------------------------------------------------------------
+# Home Tab Configuration
+# ------------------------------------------------------------------------------
+# The home tab displays an overview of all your tools with ASCII art title.
+
+[home]
+# Whether the home tab is enabled (default: false)
+enabled = true
+
+# Title text displayed in ASCII art (default: "Home")
+title = "My Project"
+
+# ASCII font for the title (default: "tiny")
+# Options: "tiny", "block", "shade", "slick", "huge", "grid", "pallet"
+titleFont = "tiny"
+
+# Title alignment (default: "left")
+# Options: "left", "center"
+titleAlign = "left"
+
+# ------------------------------------------------------------------------------
+# UI Configuration
+# ------------------------------------------------------------------------------
+# Customize the appearance and behavior of the terminal UI.
+
+[ui]
+# Sidebar position for wide terminals (default: "left")
+# Options: "left", "right"
+sidebarPosition = "left"
+
+# Tab bar position for narrow terminals (default: "top")
+# Options: "top", "bottom"
+horizontalTabPosition = "top"
+
+# Terminal width threshold for switching between vertical sidebar and horizontal tabs
+# (default: 100)
+widthThreshold = 100
+
+# Color theme (default: "default")
+# Options:
+#   - "default" (Moss) - A calm green theme
+#   - "mist" - A cool blue theme
+#   - "cappuccino" - A warm brown theme
+#   - "synthwave" - A vibrant purple/pink theme
+#   - "terminal" - Auto-detect colors from your terminal (Ghostty, iTerm2, Kitty, etc.)
+theme = "default"
+
+# Maximum number of log lines to keep in memory per tool (default: 100000)
+maxLogLines = 100000
+
+# Show shortcut numbers (1-9) on the first 9 tabs (default: false)
+showTabNumbers = false
+
+# Show line numbers in log viewer (default: "auto")
+# Options: true, false, "auto" (shows when terminal width >= 80)
+showLineNumbers = "auto"
+
+# ------------------------------------------------------------------------------
+# MCP (Model Context Protocol) Configuration
+# ------------------------------------------------------------------------------
+# Enable the HTTP API for AI agent integration via MCP.
+# When enabled, AI assistants can read logs, check status, and control processes.
+
+[mcp]
+# Enable the HTTP API for MCP server integration (default: false)
+enabled = false
+
+# Port for the HTTP API server (default: 18765)
+port = 18765
+
+# ------------------------------------------------------------------------------
+# Tools Configuration
+# ------------------------------------------------------------------------------
+# Define the processes/tools that toolui will manage.
+# Each [[tools]] section defines one tool.
+
+[[tools]]
+# REQUIRED: Unique name for this tool (displayed in tabs)
+name = "my-app"
+
+# REQUIRED: Command to run
+command = "npm"
+
+# Arguments to pass to the command
+args = ["run", "dev"]
+
+# Working directory for the command (default: current directory)
+cwd = "."
+
+# Tool names that must be ready before this tool starts.
+# A dependency is "ready" when:
+#   - Its health check passes (if healthCheck is configured)
+#   - Its process is running (if no healthCheck)
+dependsOn = ["database"]
+
+# Description shown on the home tab
+description = "Main application server"
+
+# Cleanup commands to run when stopping the tool
+# Useful for killing child processes or cleaning up resources
+cleanup = ["pkill -f 'some-child-process'"]
+
+# Environment variables to set for this command
+[tools.env]
+NODE_ENV = "development"
+DEBUG = "app:*"
+
+# Health check configuration
+# Periodically pings a URL to check if your service is healthy
+[tools.healthCheck]
+# URL to ping for health status (REQUIRED if healthCheck is configured)
+url = "http://localhost:3000/health"
+
+# Interval between checks in milliseconds (default: 10000)
+interval = 5000
+
+# Number of consecutive failures before marking unhealthy (default: 3)
+retries = 3
+
+# UI link configuration
+# Adds a button on the home tab to open this URL in your browser
+[tools.ui]
+# Display label for the button
+label = "Open App"
+
+# URL to open when clicked
+url = "http://localhost:3000"
+
+# ------------------------------------------------------------------------------
+# Example: Database with no dependencies
+# ------------------------------------------------------------------------------
+
+[[tools]]
+name = "database"
+command = "docker"
+args = ["compose", "up", "postgres"]
+description = "PostgreSQL database"
+
+[tools.healthCheck]
+url = "http://localhost:5432/health"
+interval = 3000
+retries = 5
+
+# ------------------------------------------------------------------------------
+# Example: Background worker depending on multiple services
+# ------------------------------------------------------------------------------
+
+[[tools]]
+name = "worker"
+command = "npm"
+args = ["run", "worker"]
+dependsOn = ["database", "my-app"]
+description = "Background job processor"

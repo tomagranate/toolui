@@ -160,7 +160,7 @@ export function ThemePicker({ isOpen, onClose }: ThemePickerProps) {
 						Switch Theme
 					</text>
 					<text
-						fg={colors.textMuted}
+						fg={colors.accentForeground}
 						attributes={TextAttributes.BOLD}
 						{...({
 							onMouseDown: handleCancel,

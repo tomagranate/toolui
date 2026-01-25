@@ -234,6 +234,8 @@ export function TabBar({
 				return `${StatusIcons.WARNING} `;
 			case "error":
 				return `${StatusIcons.ERROR} `;
+			case "waiting":
+				return `${StatusIcons.WAITING} `;
 			default:
 				return `${StatusIcons.STOPPED} `;
 		}
@@ -250,6 +252,8 @@ export function TabBar({
 				return colors.warning;
 			case "running":
 				return colors.success;
+			case "waiting":
+				return colors.warning;
 			default:
 				return colors.text;
 		}

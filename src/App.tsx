@@ -64,16 +64,37 @@ export function App({
 	const homeEnabled = config.home?.enabled ?? false;
 	const homeConfig = config.home ?? { enabled: false };
 
-	// Health checker for home tab
+	// Check if any tool has dependencies (need health checks for dependency tracking)
+	const hasDependencies = tools.some(
+		(t) => t.config.dependsOn && t.config.dependsOn.length > 0,
+	);
+
+	// Health checker for home tab AND dependency tracking
 	const healthCheckerRef = useRef<HealthChecker | null>(null);
 	const [healthStates, setHealthStates] = useState<HealthStateMap>(new Map());
 
 	// Stable reference to tool configs (only changes when config actually changes)
 	const toolConfigsRef = useRef(tools.map((t) => t.config));
 
-	// Initialize health checker - only on mount or when home is enabled
+	// Track if tools have been started (for dependency-aware startup)
+	const toolsStartedRef = useRef(false);
+
+	// Refs for accessing latest state in async callbacks
+	const healthStatesRef = useRef<HealthStateMap>(new Map());
+	const toolsRef = useRef(tools);
+
+	// Keep refs in sync with state
 	useEffect(() => {
-		if (!homeEnabled) return;
+		healthStatesRef.current = healthStates;
+	}, [healthStates]);
+	useEffect(() => {
+		toolsRef.current = tools;
+	}, [tools]);
+
+	// Initialize health checker - needed for home tab OR dependency tracking
+	const needsHealthChecker = homeEnabled || hasDependencies;
+	useEffect(() => {
+		if (!needsHealthChecker) return;
 
 		const checker = new HealthChecker();
 		checker.initialize(toolConfigsRef.current);
@@ -94,12 +115,12 @@ export function App({
 			checker.stop();
 			healthCheckerRef.current = null;
 		};
-	}, [homeEnabled]);
+	}, [needsHealthChecker]);
 
 	// Watch for process status changes and trigger immediate health checks
 	const prevToolStatusesForHealthRef = useRef<Map<string, string>>(new Map());
 	useEffect(() => {
-		if (!homeEnabled || !healthCheckerRef.current) return;
+		if (!needsHealthChecker || !healthCheckerRef.current) return;
 
 		for (const tool of tools) {
 			const toolName = tool.config.name;
@@ -119,7 +140,7 @@ export function App({
 
 			prevToolStatusesForHealthRef.current.set(toolName, currentStatus);
 		}
-	}, [homeEnabled, tools]);
+	}, [needsHealthChecker, tools]);
 
 	// Active index: 0 is home tab when enabled, tools start at 1
 	const [activeIndex, setActiveIndex] = useState(homeEnabled ? 0 : 0);
@@ -154,17 +175,36 @@ export function App({
 		[],
 	);
 
+	// Filter tabs based on shutdown state (needed early for calculations)
+	const isShuttingDown = processManager.getIsShuttingDown();
+	const activeTools = tools.filter((tool) => {
+		if (isShuttingDown) {
+			// During shutdown: only show processes that are gracefully shutting down
+			return tool.status === "shuttingDown";
+		}
+		// Normal operation: show all tabs (running, stopped, error, shuttingDown)
+		return true;
+	});
+
+	// During shutdown, home tab is disabled
+	const effectiveHomeEnabled = homeEnabled && !isShuttingDown;
+
+	// Total tabs for navigation - during shutdown, use activeTools (no home)
+	const totalTabs = isShuttingDown
+		? activeTools.length
+		: effectiveHomeEnabled
+			? tools.length + 1
+			: tools.length;
+
 	// Calculate tool index accounting for home tab offset
-	const isHomeTabActive = homeEnabled && activeIndex === 0;
-	const toolIndex = homeEnabled ? activeIndex - 1 : activeIndex;
+	// Use effectiveHomeEnabled (which is false during shutdown)
+	const isHomeTabActive = effectiveHomeEnabled && activeIndex === 0;
+	const toolIndex = effectiveHomeEnabled ? activeIndex - 1 : activeIndex;
 
 	// Get current tab's search state
 	const currentTool = toolIndex >= 0 ? tools[toolIndex] : undefined;
 	const currentToolName = currentTool?.config.name ?? "";
 	const currentSearchState = getTabSearchState(currentToolName);
-
-	// Total number of tabs (home + tools)
-	const totalTabs = homeEnabled ? tools.length + 1 : tools.length;
 
 	const widthThreshold = config.ui?.widthThreshold ?? DEFAULT_WIDTH_THRESHOLD;
 	const sidebarPosition = config.ui?.sidebarPosition ?? "left";
@@ -179,12 +219,40 @@ export function App({
 	// Line number display setting for LogViewer
 	const showLineNumbers = config.ui?.showLineNumbers ?? "auto";
 
-	// Start all tools on mount
+	// Start all tools on mount (with dependency awareness if needed)
 	useEffect(() => {
-		for (let i = 0; i < initialTools.length; i++) {
-			processManager.startTool(i);
+		if (toolsStartedRef.current) return;
+		toolsStartedRef.current = true;
+
+		// Callback to check if a tool is ready for dependents
+		// Uses refs to access latest state since this is called asynchronously
+		const isToolReady = (toolName: string): boolean => {
+			const currentTools = toolsRef.current;
+			const currentHealthStates = healthStatesRef.current;
+
+			const tool = currentTools.find((t) => t.config.name === toolName);
+			if (!tool) return false;
+
+			// If tool has health check, it's ready when healthy
+			if (tool.config.healthCheck) {
+				const healthState = currentHealthStates.get(toolName);
+				return healthState?.status === "healthy";
+			}
+
+			// If no health check, it's ready when running
+			return tool.status === "running";
+		};
+
+		// Start tools with dependency awareness
+		if (hasDependencies) {
+			processManager.startAllToolsWithDependencies(isToolReady);
+		} else {
+			// No dependencies, start all tools immediately
+			for (let i = 0; i < initialTools.length; i++) {
+				processManager.startTool(i);
+			}
 		}
-	}, [processManager, initialTools.length]);
+	}, [processManager, initialTools.length, hasDependencies]);
 
 	// Track previous tool statuses for exit detection
 	const prevToolStatusesRef = useRef<Map<string, string>>(new Map());
@@ -362,8 +430,8 @@ export function App({
 
 		// Add tab switching commands for all tabs (shortcuts only for first 9)
 		// These go last so they appear at the bottom of the palette
-		// When home is enabled, home is at index 0, tools start at index 1
-		if (homeEnabled) {
+		// When home is enabled (and not shutting down), home is at index 0, tools start at index 1
+		if (effectiveHomeEnabled) {
 			commands.push({
 				id: "switch-tab-home",
 				label: "Switch to Home",
@@ -379,7 +447,7 @@ export function App({
 		for (let i = 0; i < tools.length; i++) {
 			const tool = tools[i];
 			if (tool) {
-				const tabIndex = homeEnabled ? i + 1 : i;
+				const tabIndex = effectiveHomeEnabled ? i + 1 : i;
 				commands.push({
 					id: `switch-tab-${i}`,
 					label: `Switch to ${tool.config.name}`,
@@ -405,7 +473,7 @@ export function App({
 		currentToolName,
 		currentTool,
 		toolIndex,
-		homeEnabled,
+		effectiveHomeEnabled,
 		updateTabSearchState,
 		lineWrap,
 		toggleLineWrap,
@@ -534,29 +602,68 @@ export function App({
 		}
 
 		// Tab navigation - increment navigationKey to signal auto-scroll should happen
-		if (key.name === "h" || key.name === "left") {
+		// During shutdown, navigate through activeTools indices, mapping to original tool indices
+		const navigatePrev = () => {
+			if (totalTabs === 0) return;
 			setNavigationKey((k) => k + 1);
-			setActiveIndex((prev) => (prev > 0 ? prev - 1 : totalTabs - 1));
+
+			if (isShuttingDown) {
+				// Find current position in activeTools
+				const currentActiveIdx = currentTool
+					? activeTools.indexOf(currentTool)
+					: 0;
+				const nextActiveIdx =
+					currentActiveIdx > 0 ? currentActiveIdx - 1 : activeTools.length - 1;
+				const nextTool = activeTools[nextActiveIdx];
+				if (nextTool) {
+					const originalIdx = tools.indexOf(nextTool);
+					setActiveIndex(effectiveHomeEnabled ? originalIdx + 1 : originalIdx);
+				}
+			} else {
+				setActiveIndex((prev) => (prev > 0 ? prev - 1 : totalTabs - 1));
+			}
+		};
+
+		const navigateNext = () => {
+			if (totalTabs === 0) return;
+			setNavigationKey((k) => k + 1);
+
+			if (isShuttingDown) {
+				// Find current position in activeTools
+				const currentActiveIdx = currentTool
+					? activeTools.indexOf(currentTool)
+					: -1;
+				const nextActiveIdx =
+					currentActiveIdx < activeTools.length - 1 ? currentActiveIdx + 1 : 0;
+				const nextTool = activeTools[nextActiveIdx];
+				if (nextTool) {
+					const originalIdx = tools.indexOf(nextTool);
+					setActiveIndex(effectiveHomeEnabled ? originalIdx + 1 : originalIdx);
+				}
+			} else {
+				setActiveIndex((prev) => (prev < totalTabs - 1 ? prev + 1 : 0));
+			}
+		};
+
+		if (key.name === "h" || key.name === "left") {
+			navigatePrev();
 		}
 		if (key.name === "l" || key.name === "right") {
-			setNavigationKey((k) => k + 1);
-			setActiveIndex((prev) => (prev < totalTabs - 1 ? prev + 1 : 0));
+			navigateNext();
 		}
 		if (key.name === "j" || key.name === "down") {
 			if (useVertical) {
-				setNavigationKey((k) => k + 1);
-				setActiveIndex((prev) => (prev < totalTabs - 1 ? prev + 1 : 0));
+				navigateNext();
 			}
 		}
 		if (key.name === "k" || key.name === "up") {
 			if (useVertical) {
-				setNavigationKey((k) => k + 1);
-				setActiveIndex((prev) => (prev > 0 ? prev - 1 : totalTabs - 1));
+				navigatePrev();
 			}
 		}
 
-		// Backtick to switch to home tab
-		if (key.name === "`" && homeEnabled) {
+		// Backtick to switch to home tab (only when not shutting down)
+		if (key.name === "`" && effectiveHomeEnabled) {
 			setNavigationKey((k) => k + 1);
 			setActiveIndex(0);
 		}
@@ -571,21 +678,10 @@ export function App({
 		}
 	});
 
-	// Filter tabs based on shutdown state
-	const isShuttingDown = processManager.getIsShuttingDown();
-	const activeTools = tools.filter((tool) => {
-		if (isShuttingDown) {
-			// During shutdown: only show processes that are gracefully shutting down
-			return tool.status === "shuttingDown";
-		}
-		// Normal operation: show all tabs (running, stopped, error, shuttingDown)
-		return true;
-	});
-
 	// Find the active tool index in the filtered list
 	// Account for home tab offset when calculating display index
 	const activeToolIndex = currentTool ? activeTools.indexOf(currentTool) : -1;
-	const displayActiveIndex = homeEnabled
+	const displayActiveIndex = effectiveHomeEnabled
 		? isHomeTabActive
 			? 0
 			: activeToolIndex + 1
@@ -621,18 +717,20 @@ export function App({
 			tools={activeTools}
 			activeIndex={displayActiveIndex}
 			onSelect={(idx) => {
-				// When home is enabled, index 0 is home tab
-				if (homeEnabled && idx === 0) {
+				// When home is enabled (and not shutting down), index 0 is home tab
+				if (effectiveHomeEnabled && idx === 0) {
 					setActiveIndex(0);
 					return;
 				}
 				// Adjust for home tab offset
-				const toolIdx = homeEnabled ? idx - 1 : idx;
+				const toolIdx = effectiveHomeEnabled ? idx - 1 : idx;
 				const tool = activeTools[toolIdx];
 				if (tool) {
 					const originalIndex = tools.indexOf(tool);
 					if (originalIndex >= 0) {
-						setActiveIndex(homeEnabled ? originalIndex + 1 : originalIndex);
+						setActiveIndex(
+							effectiveHomeEnabled ? originalIndex + 1 : originalIndex,
+						);
 					}
 				}
 			}}
@@ -641,7 +739,7 @@ export function App({
 			width={terminalWidth}
 			showTabNumbers={showTabNumbers}
 			navigationKey={navigationKey}
-			homeEnabled={homeEnabled}
+			homeEnabled={effectiveHomeEnabled}
 		/>
 	);
 
@@ -656,7 +754,7 @@ export function App({
 			onToolSelect={(idx) => {
 				// Switch to the selected tool's tab
 				setNavigationKey((k) => k + 1);
-				setActiveIndex(homeEnabled ? idx + 1 : idx);
+				setActiveIndex(effectiveHomeEnabled ? idx + 1 : idx);
 			}}
 			onRestartTool={(idx) => {
 				const tool = tools[idx];

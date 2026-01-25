@@ -81,6 +81,9 @@ export async function loadConfig(
 			...(uiConfig && { ui: uiConfig }),
 		};
 
+		// Validate depends_on references and check for circular dependencies
+		validateDependsOn(config.tools, warnings);
+
 		return { config, warnings };
 	} catch (error) {
 		if (error instanceof Error) {
@@ -337,4 +340,87 @@ function validateUiConfig(
 	}
 
 	return result;
+}
+
+/**
+ * Validate depends_on references and detect circular dependencies.
+ * Adds warnings for invalid references, throws for circular dependencies.
+ */
+function validateDependsOn(tools: Config["tools"], warnings: string[]): void {
+	const toolNames = new Set(tools.map((t) => t.name));
+
+	// Check for invalid references
+	for (const tool of tools) {
+		if (!tool.dependsOn || tool.dependsOn.length === 0) continue;
+
+		for (const dep of tool.dependsOn) {
+			if (!toolNames.has(dep)) {
+				warnings.push(
+					`[tools.${tool.name}] dependsOn references unknown tool '${dep}' - ignoring`,
+				);
+			}
+			if (dep === tool.name) {
+				warnings.push(
+					`[tools.${tool.name}] dependsOn references itself - ignoring`,
+				);
+			}
+		}
+	}
+
+	// Check for circular dependencies
+	const cycle = detectCircularDependencies(tools);
+	if (cycle) {
+		throw new Error(
+			`Circular dependency detected: ${cycle.join(" -> ")} -> ${cycle[0]}`,
+		);
+	}
+}
+
+/**
+ * Detect circular dependencies using DFS.
+ * Returns the cycle path if found, null otherwise.
+ */
+export function detectCircularDependencies(
+	tools: Config["tools"],
+): string[] | null {
+	const toolMap = new Map(tools.map((t) => [t.name, t]));
+	const visited = new Set<string>();
+	const recursionStack = new Set<string>();
+	const path: string[] = [];
+
+	function dfs(name: string): string[] | null {
+		visited.add(name);
+		recursionStack.add(name);
+		path.push(name);
+
+		const tool = toolMap.get(name);
+		if (tool?.dependsOn) {
+			for (const dep of tool.dependsOn) {
+				// Skip invalid references (already warned about)
+				if (!toolMap.has(dep)) continue;
+
+				if (!visited.has(dep)) {
+					const cycle = dfs(dep);
+					if (cycle) return cycle;
+				} else if (recursionStack.has(dep)) {
+					// Found a cycle - return the cycle portion of the path
+					const cycleStart = path.indexOf(dep);
+					return path.slice(cycleStart);
+				}
+			}
+		}
+
+		path.pop();
+		recursionStack.delete(name);
+		return null;
+	}
+
+	for (const tool of tools) {
+		if (!visited.has(tool.name)) {
+			const cycle = dfs(tool.name);
+			if (cycle) return cycle;
+		}
+	}
+
+	return null;
 }

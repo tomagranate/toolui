@@ -4,6 +4,7 @@
  * Supports:
  *   --config <path>, -c <path>  Custom config file path
  *   --help, -h                  Show help text
+ *   --version, -v               Show version
  *   init                        Initialize a new config file
  *   mcp                         Start the MCP server
  */
@@ -15,6 +16,8 @@ export interface CliArgs {
 	configPath?: string;
 	/** Whether to show help (--help/-h) */
 	showHelp: boolean;
+	/** Whether to show version (--version/-v) */
+	showVersion: boolean;
 }
 
 /**
@@ -23,6 +26,7 @@ export interface CliArgs {
 export function parseArgs(argv: string[] = process.argv.slice(2)): CliArgs {
 	const args: CliArgs = {
 		showHelp: false,
+		showVersion: false,
 	};
 
 	let i = 0;
@@ -31,6 +35,9 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CliArgs {
 
 		if (arg === "--help" || arg === "-h") {
 			args.showHelp = true;
+			i++;
+		} else if (arg === "--version" || arg === "-v") {
+			args.showVersion = true;
 			i++;
 		} else if (arg === "--config" || arg === "-c") {
 			const nextArg = argv[i + 1];
@@ -48,10 +55,12 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CliArgs {
 			i++;
 		} else if (arg?.startsWith("-")) {
 			console.error(`Error: Unknown option: ${arg}`);
+			console.error("Run 'toolui --help' for usage information.");
 			process.exit(1);
 		} else {
 			// Unknown positional argument
 			console.error(`Error: Unknown command: ${arg}`);
+			console.error("Run 'toolui --help' for usage information.");
 			process.exit(1);
 		}
 	}
@@ -74,6 +83,7 @@ Usage:
 Options:
   -c, --config <path>           Path to config file (default: toolui.config.toml)
   -h, --help                    Show this help message
+  -v, --version                 Show version information
 
 Examples:
   toolui                        Start with default config
@@ -81,6 +91,20 @@ Examples:
   toolui init                   Create toolui.config.toml in current directory
   toolui mcp                    Start MCP server (configure in your IDE)
 
-Documentation: https://github.com/your-org/toolui
+Documentation: https://github.com/tomagranate/toolui
 `.trim();
+}
+
+/**
+ * Get the version string from package.json.
+ */
+export async function getVersion(): Promise<string> {
+	try {
+		const packageJsonPath = new URL("../package.json", import.meta.url);
+		const file = Bun.file(packageJsonPath);
+		const packageJson = await file.json();
+		return packageJson.version || "unknown";
+	} catch {
+		return "unknown";
+	}
 }
