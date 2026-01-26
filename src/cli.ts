@@ -9,6 +9,9 @@
  *   mcp                         Start the MCP server
  */
 
+// Import version at build time so it gets bundled into the compiled binary
+import packageJson from "../package.json";
+
 export interface CliArgs {
 	/** Subcommand to run (init, mcp) */
 	command?: "init" | "mcp";
@@ -97,14 +100,8 @@ Documentation: https://github.com/tomagranate/toolui
 
 /**
  * Get the version string from package.json.
+ * The version is embedded at build time via the import at the top of this file.
  */
-export async function getVersion(): Promise<string> {
-	try {
-		const packageJsonPath = new URL("../package.json", import.meta.url);
-		const file = Bun.file(packageJsonPath);
-		const packageJson = await file.json();
-		return packageJson.version || "unknown";
-	} catch {
-		return "unknown";
-	}
+export function getVersion(): string {
+	return packageJson.version || "unknown";
 }

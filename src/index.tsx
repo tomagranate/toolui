@@ -33,8 +33,7 @@ async function main() {
 
 	// Handle --version
 	if (args.showVersion) {
-		const version = await getVersion();
-		console.log(`toolui v${version}`);
+		console.log(`toolui v${getVersion()}`);
 		process.exit(0);
 	}
 
