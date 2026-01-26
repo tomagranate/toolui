@@ -5,7 +5,7 @@ import type { ToolState } from "../types";
 interface ToolSummary {
 	name: string;
 	status: string;
-	logsLength: number;
+	logVersion: number;
 }
 
 interface ToolsListSnapshot {
@@ -14,68 +14,69 @@ interface ToolsListSnapshot {
 }
 
 /**
- * Hook that subscribes to changes in the tools list.
+ * Create a summary for change detection.
+ */
+function createSummaries(tools: ToolState[]): ToolSummary[] {
+	return tools.map((t) => ({
+		name: t.config.name,
+		status: t.status,
+		logVersion: t.logVersion,
+	}));
+}
+
+/**
+ * Check if summaries have changed.
+ */
+function hasChanges(current: ToolSummary[], last: ToolSummary[]): boolean {
+	if (current.length !== last.length) return true;
+	for (let i = 0; i < current.length; i++) {
+		const curr = current[i];
+		const prev = last[i];
+		if (
+			curr?.name !== prev?.name ||
+			curr?.status !== prev?.status ||
+			curr?.logVersion !== prev?.logVersion
+		) {
+			return true;
+		}
+	}
+	return false;
+}
+
+/**
+ * Hook that subscribes to changes in the tools list using event-driven updates.
  * Only triggers re-renders when:
  * - Number of tools changes
  * - Tool status changes (for TabBar indicators)
- * - Tool logs.length changes (for TabBar indicators)
+ * - Tool logVersion changes (for log updates including replacements)
  *
  * @param processManager - The process manager instance
- * @param pollInterval - How often to check for changes (default 100ms)
  * @returns The current tools array
  */
-export function useToolsList(
-	processManager: ProcessManager,
-	pollInterval = 100,
-): ToolState[] {
+export function useToolsList(processManager: ProcessManager): ToolState[] {
 	// Initialize with spread to create new array reference
 	const initialTools = processManager.getTools();
 	const snapshotRef = useRef<ToolsListSnapshot>({
 		tools: [...initialTools],
-		summaries: initialTools.map((t) => ({
-			name: t.config.name,
-			status: t.status,
-			logsLength: t.logs.length,
-		})),
+		summaries: createSummaries(initialTools),
 	});
 	const listenersRef = useRef(new Set<() => void>());
-	const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+	const unsubscribeRef = useRef<(() => void) | null>(null);
 
 	const subscribe = useCallback(
 		(onStoreChange: () => void) => {
 			listenersRef.current.add(onStoreChange);
 
-			if (intervalRef.current === null) {
-				intervalRef.current = setInterval(() => {
+			// Subscribe to ProcessManager on first listener
+			if (unsubscribeRef.current === null) {
+				unsubscribeRef.current = processManager.subscribe("all", () => {
 					const currentTools = processManager.getTools();
-					const currentSummaries = currentTools.map((t) => ({
-						name: t.config.name,
-						status: t.status,
-						logsLength: t.logs.length,
-					}));
-
+					const currentSummaries = createSummaries(currentTools);
 					const lastSummaries = snapshotRef.current.summaries;
 
-					// Check if anything changed
-					let hasChanged = currentSummaries.length !== lastSummaries.length;
-					if (!hasChanged) {
-						for (let i = 0; i < currentSummaries.length; i++) {
-							const curr = currentSummaries[i];
-							const last = lastSummaries[i];
-							if (
-								curr?.name !== last?.name ||
-								curr?.status !== last?.status ||
-								curr?.logsLength !== last?.logsLength
-							) {
-								hasChanged = true;
-								break;
-							}
-						}
-					}
-
-					if (hasChanged) {
-						// IMPORTANT: Create new array reference so useSyncExternalStore detects the change
-						// processManager.getTools() may return the same array reference with mutated contents
+					// Only update if something actually changed
+					if (hasChanges(currentSummaries, lastSummaries)) {
+						// Create new array reference so useSyncExternalStore detects the change
 						snapshotRef.current = {
 							tools: [...currentTools],
 							summaries: currentSummaries,
@@ -84,18 +85,21 @@ export function useToolsList(
 							listener();
 						}
 					}
-				}, pollInterval);
+				});
 			}
 
 			return () => {
 				listenersRef.current.delete(onStoreChange);
-				if (listenersRef.current.size === 0 && intervalRef.current !== null) {
-					clearInterval(intervalRef.current);
-					intervalRef.current = null;
+				if (
+					listenersRef.current.size === 0 &&
+					unsubscribeRef.current !== null
+				) {
+					unsubscribeRef.current();
+					unsubscribeRef.current = null;
 				}
 			};
 		},
-		[processManager, pollInterval],
+		[processManager],
 	);
 
 	const getSnapshot = useCallback(() => snapshotRef.current.tools, []);

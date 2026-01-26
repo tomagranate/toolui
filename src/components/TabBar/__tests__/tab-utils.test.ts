@@ -23,6 +23,7 @@ function createMockTool(name: string): ToolState {
 		status: "stopped",
 		exitCode: null,
 		logTrimCount: 0,
+		logVersion: 0,
 	};
 }
 

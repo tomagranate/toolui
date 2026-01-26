@@ -16,6 +16,12 @@ import { isProcessRunning, killProcessGracefully } from "./process-utils";
 /** Callback to check if a tool is ready (for dependency waiting) */
 export type IsToolReadyCallback = (toolName: string) => boolean;
 
+/** Callback for change notifications */
+export type ChangeCallback = () => void;
+
+/** Subscriber key - either "all" for all tools or a tool index */
+export type SubscriberKey = "all" | number;
+
 /** Default timeout for waiting on dependencies (30 seconds) */
 const DEFAULT_DEPENDENCY_TIMEOUT = 30000;
 
@@ -28,8 +34,55 @@ export class ProcessManager {
 	private isShuttingDown = false;
 	private recentlyStopped = new Set<number>();
 
+	/** Subscribers for change notifications */
+	private subscribers = new Map<SubscriberKey, Set<ChangeCallback>>();
+
 	constructor(maxLogLines: number = 100000) {
 		this.maxLogLines = maxLogLines;
+	}
+
+	/**
+	 * Subscribe to changes for a specific tool or all tools.
+	 * @param key - "all" to subscribe to any change, or tool index for specific tool
+	 * @param callback - Function to call when changes occur
+	 * @returns Unsubscribe function
+	 */
+	subscribe(key: SubscriberKey, callback: ChangeCallback): () => void {
+		let callbacks = this.subscribers.get(key);
+		if (!callbacks) {
+			callbacks = new Set();
+			this.subscribers.set(key, callbacks);
+		}
+		callbacks.add(callback);
+
+		return () => {
+			callbacks?.delete(callback);
+			if (callbacks?.size === 0) {
+				this.subscribers.delete(key);
+			}
+		};
+	}
+
+	/**
+	 * Notify subscribers of a change to a specific tool.
+	 * Notifies both tool-specific subscribers and "all" subscribers.
+	 */
+	private notifyChange(toolIndex: number): void {
+		// Notify tool-specific subscribers
+		const toolCallbacks = this.subscribers.get(toolIndex);
+		if (toolCallbacks) {
+			for (const callback of toolCallbacks) {
+				callback();
+			}
+		}
+
+		// Notify "all" subscribers
+		const allCallbacks = this.subscribers.get("all");
+		if (allCallbacks) {
+			for (const callback of allCallbacks) {
+				callback();
+			}
+		}
 	}
 
 	async initialize(configs: ToolConfig[]): Promise<ToolState[]> {
@@ -43,6 +96,7 @@ export class ProcessManager {
 			status: "stopped",
 			exitCode: null,
 			logTrimCount: 0,
+			logVersion: 0,
 		}));
 		return this.tools;
 	}
@@ -69,6 +123,10 @@ export class ProcessManager {
 			tool.exitCode = null;
 			tool.pid = proc.pid;
 			tool.startTime = Date.now();
+			tool.logVersion = 0;
+
+			// Notify subscribers of status change
+			this.notifyChange(index);
 
 			// Save PID to file for persistence
 			await this.savePidToFile(index);
@@ -109,10 +167,13 @@ export class ProcessManager {
 				tool.startTime = undefined;
 				// Remove PID from file when process exits
 				await removePidFromFile(index);
+				// addLog will also notify, but notify here for immediate status update
+				this.notifyChange(index);
 				this.addLog(index, `\n[Process exited with code ${exitCode}]`);
 			});
 		} catch (error) {
 			tool.status = "error";
+			this.notifyChange(index);
 			this.addLog(index, `[Error starting process: ${error}]`);
 		}
 	}
@@ -236,11 +297,17 @@ export class ProcessManager {
 			tool.logs.push(logEntry);
 		}
 
+		// Increment version counter for change detection (works for both append and replace)
+		tool.logVersion++;
+
 		// Limit log size
 		if (tool.logs.length > this.maxLogLines) {
 			tool.logs.shift();
 			tool.logTrimCount++; // Track that indices have shifted
 		}
+
+		// Notify subscribers of the change
+		this.notifyChange(index);
 	}
 
 	getTools(): ToolState[] {
@@ -275,6 +342,7 @@ export class ProcessManager {
 				tool.pid = undefined;
 				tool.startTime = undefined;
 				await removePidFromFile(index);
+				this.notifyChange(index);
 			}
 		} catch (_error) {
 			// Ignore errors
@@ -283,6 +351,7 @@ export class ProcessManager {
 			tool.pid = undefined;
 			tool.startTime = undefined;
 			await removePidFromFile(index);
+			this.notifyChange(index);
 		}
 	}
 
@@ -325,6 +394,8 @@ export class ProcessManager {
 		const tool = this.tools[index];
 		if (tool) {
 			tool.logs = [];
+			tool.logVersion++;
+			this.notifyChange(index);
 		}
 	}
 
@@ -365,6 +436,7 @@ export class ProcessManager {
 					this.recentlyStopped.add(i);
 				}
 				tool.process = null;
+				this.notifyChange(i);
 			}
 		}
 
@@ -454,6 +526,7 @@ export class ProcessManager {
 			status: "running",
 			exitCode: null,
 			logTrimCount: 0,
+			logVersion: 0,
 		};
 		this.tools.push(tool);
 		return this.tools.length - 1;
@@ -544,10 +617,13 @@ export class ProcessManager {
 		const { levels } = resolveDependencies(this.tools.map((t) => t.config));
 
 		// Mark all tools with dependencies as "waiting" before starting
-		for (const tool of this.tools) {
+		for (let i = 0; i < this.tools.length; i++) {
+			const tool = this.tools[i];
+			if (!tool) continue;
 			const deps = getValidDependencies(tool.config, toolNames);
 			if (deps.length > 0) {
 				tool.status = "waiting";
+				this.notifyChange(i);
 			}
 		}
 

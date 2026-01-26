@@ -273,7 +273,12 @@ async function main() {
 			}
 		}
 	} catch (error) {
-		console.error("Error starting toolui:", error);
+		// Print clean error message without stack trace for expected errors
+		if (error instanceof Error) {
+			console.error(`Error: ${error.message}`);
+		} else {
+			console.error("Error starting toolui:", error);
+		}
 		process.exit(1);
 	}
 }

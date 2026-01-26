@@ -57,8 +57,8 @@ export function App({
 	// Get theme from context
 	const { theme } = useTheme();
 
-	// Use hook that only re-renders when tool status/logs actually change
-	const tools = useToolsList(processManager, 100);
+	// Use hook that only re-renders when tool status/logs actually change (event-driven)
+	const tools = useToolsList(processManager);
 
 	// Home tab configuration
 	const homeEnabled = config.home?.enabled ?? false;

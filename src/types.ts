@@ -59,6 +59,8 @@ export interface ToolState {
 	startTime?: number; // Unix timestamp when process started
 	/** Counter incremented when logs are trimmed (shifts indices) */
 	logTrimCount: number;
+	/** Counter incremented on any log change (append or replace) for change detection */
+	logVersion: number;
 }
 
 /** Health check status for a tool */

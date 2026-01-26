@@ -2,34 +2,34 @@ import { useCallback, useRef, useSyncExternalStore } from "react";
 import type { ProcessManager } from "../lib/processes";
 import type { ToolState } from "../types";
 
+interface TrackedValues {
+	logVersion: number;
+	status: string;
+	exitCode: number | null | undefined;
+}
+
 /**
- * Hook that subscribes to a specific tool's state changes.
+ * Hook that subscribes to a specific tool's state changes using event-driven updates.
  * Uses useSyncExternalStore to only re-render when this specific tool changes.
  *
  * @param processManager - The process manager instance
  * @param toolIndex - Index of the tool to subscribe to
- * @param pollInterval - How often to check for changes (default 100ms)
  * @returns The current tool state, or undefined if index is invalid
  */
 export function useToolState(
 	processManager: ProcessManager,
 	toolIndex: number,
-	pollInterval = 100,
 ): ToolState | undefined {
 	// Store current state in a ref
 	const stateRef = useRef<ToolState | undefined>(
 		processManager.getTool(toolIndex),
 	);
 	const listenersRef = useRef(new Set<() => void>());
-	const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+	const unsubscribeRef = useRef<(() => void) | null>(null);
 
 	// Track last known values for change detection
-	const lastValuesRef = useRef<{
-		logsLength: number;
-		status: string;
-		exitCode: number | null | undefined;
-	}>({
-		logsLength: stateRef.current?.logs.length ?? 0,
+	const lastValuesRef = useRef<TrackedValues>({
+		logVersion: stateRef.current?.logVersion ?? 0,
 		status: stateRef.current?.status ?? "",
 		exitCode: stateRef.current?.exitCode,
 	});
@@ -38,9 +38,9 @@ export function useToolState(
 		(onStoreChange: () => void) => {
 			listenersRef.current.add(onStoreChange);
 
-			// Start polling if not already
-			if (intervalRef.current === null) {
-				intervalRef.current = setInterval(() => {
+			// Subscribe to ProcessManager for this specific tool on first listener
+			if (unsubscribeRef.current === null) {
+				unsubscribeRef.current = processManager.subscribe(toolIndex, () => {
 					const tool = processManager.getTool(toolIndex);
 					if (!tool) {
 						if (stateRef.current !== undefined) {
@@ -54,14 +54,14 @@ export function useToolState(
 
 					const lastValues = lastValuesRef.current;
 					const hasChanged =
-						tool.logs.length !== lastValues.logsLength ||
+						tool.logVersion !== lastValues.logVersion ||
 						tool.status !== lastValues.status ||
 						tool.exitCode !== lastValues.exitCode;
 
 					if (hasChanged) {
 						// Update tracking values
 						lastValuesRef.current = {
-							logsLength: tool.logs.length,
+							logVersion: tool.logVersion,
 							status: tool.status,
 							exitCode: tool.exitCode,
 						};
@@ -72,18 +72,21 @@ export function useToolState(
 							listener();
 						}
 					}
-				}, pollInterval);
+				});
 			}
 
 			return () => {
 				listenersRef.current.delete(onStoreChange);
-				if (listenersRef.current.size === 0 && intervalRef.current !== null) {
-					clearInterval(intervalRef.current);
-					intervalRef.current = null;
+				if (
+					listenersRef.current.size === 0 &&
+					unsubscribeRef.current !== null
+				) {
+					unsubscribeRef.current();
+					unsubscribeRef.current = null;
 				}
 			};
 		},
-		[processManager, toolIndex, pollInterval],
+		[processManager, toolIndex],
 	);
 
 	const getSnapshot = useCallback(() => stateRef.current, []);

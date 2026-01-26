@@ -12,7 +12,11 @@ export {
 	savePidFile,
 	updatePidFile,
 } from "./pid-file";
-export type { IsToolReadyCallback } from "./process-manager";
+export type {
+	ChangeCallback,
+	IsToolReadyCallback,
+	SubscriberKey,
+} from "./process-manager";
 export { ProcessManager } from "./process-manager";
 export {
 	isProcessRunning,

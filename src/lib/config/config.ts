@@ -87,6 +87,14 @@ export async function loadConfig(
 		return { config, warnings };
 	} catch (error) {
 		if (error instanceof Error) {
+			// Check for file not found error
+			const nodeError = error as NodeJS.ErrnoException;
+			if (nodeError.code === "ENOENT") {
+				throw new Error(
+					`Config file not found: ${path}\n` +
+						`  Create a config file or specify a different path with -c <path>`,
+				);
+			}
 			throw new Error(`Failed to load config: ${error.message}`);
 		}
 		throw error;
