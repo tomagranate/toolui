@@ -9,6 +9,7 @@ on:
         type: string
 
 permissions:
+  id-token: write
   contents: write
 
 jobs:
