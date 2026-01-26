@@ -3,27 +3,20 @@
  */
 
 import { existsSync } from "node:fs";
-import { copyFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
+
+// Import sample config as text at bundle time - this embeds the content in the binary
+import sampleConfigContent from "../sample-config.toml" with { type: "text" };
 
 const CONFIG_FILENAME = "toolui.config.toml";
 
 /**
- * Get the path to the sample config file bundled with toolui.
- */
-function getSampleConfigPath(): string {
-	// import.meta.dir is the directory containing this file (src/commands/)
-	// The sample config is in src/sample-config.toml
-	return join(import.meta.dir, "..", "sample-config.toml");
-}
-
-/**
  * Run the init command.
- * Copies the sample config to the current working directory.
+ * Writes the embedded sample config to the current working directory.
  */
 export async function runInit(): Promise<void> {
 	const targetPath = join(process.cwd(), CONFIG_FILENAME);
-	const samplePath = getSampleConfigPath();
 
 	// Check if config already exists
 	if (existsSync(targetPath)) {
@@ -34,17 +27,8 @@ export async function runInit(): Promise<void> {
 		process.exit(1);
 	}
 
-	// Check if sample config exists
-	if (!existsSync(samplePath)) {
-		// If bundled sample doesn't exist, we might be in development
-		// Try to find it relative to the source
-		console.error("Error: Could not find sample config file.");
-		console.error(`Expected at: ${samplePath}`);
-		process.exit(1);
-	}
-
 	try {
-		await copyFile(samplePath, targetPath);
+		await writeFile(targetPath, sampleConfigContent);
 		console.log(`Created ${CONFIG_FILENAME}`);
 		console.log("");
 		console.log("Next steps:");
