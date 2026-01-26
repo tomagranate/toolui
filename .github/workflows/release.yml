@@ -255,7 +255,7 @@ jobs:
           bun run check:nofix
 
       - name: Publish to NPM
-        run: npm publish --access public --ignore-scripts
+        run: npm publish --access public --provenance --ignore-scripts
 
   update-homebrew:
     name: Update Homebrew Formula
