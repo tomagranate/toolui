@@ -9,6 +9,7 @@ on:
         type: string
 
 permissions:
+  id-token: write
   contents: write
 
 jobs:
@@ -255,8 +256,6 @@ jobs:
 
       - name: Publish to NPM
         run: npm publish --access public --ignore-scripts
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   update-homebrew:
     name: Update Homebrew Formula
