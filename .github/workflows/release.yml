@@ -239,7 +239,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Setup Bun
@@ -254,9 +254,7 @@ jobs:
           bun run check:nofix
 
       - name: Publish to NPM
-        run: npm publish --access public --ignore-scripts
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public --ignore-scripts
 
   update-homebrew:
     name: Update Homebrew Formula
