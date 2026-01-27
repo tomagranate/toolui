@@ -7,14 +7,15 @@
  *   --version, -v               Show version
  *   init                        Initialize a new config file
  *   mcp                         Start the MCP server
+ *   update                      Update toolui to the latest version
  */
 
 // Import version at build time so it gets bundled into the compiled binary
 import packageJson from "../package.json";
 
 export interface CliArgs {
-	/** Subcommand to run (init, mcp) */
-	command?: "init" | "mcp";
+	/** Subcommand to run (init, mcp, update) */
+	command?: "init" | "mcp" | "update";
 	/** Path to config file (--config/-c) */
 	configPath?: string;
 	/** Whether to show help (--help/-h) */
@@ -56,6 +57,9 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CliArgs {
 		} else if (arg === "mcp") {
 			args.command = "mcp";
 			i++;
+		} else if (arg === "update" || arg === "upgrade") {
+			args.command = "update";
+			i++;
 		} else if (arg?.startsWith("-")) {
 			console.error(`Error: Unknown option: ${arg}`);
 			console.error("Run 'toolui --help' for usage information.");
@@ -82,6 +86,7 @@ Usage:
   toolui [options]              Start the TUI dashboard
   toolui init                   Create a sample config file in the current directory
   toolui mcp                    Start the MCP server for AI agent integration
+  toolui update                 Update toolui to the latest version
 
 Options:
   -c, --config <path>           Path to config file (default: toolui.config.toml)
@@ -93,6 +98,7 @@ Examples:
   toolui -c myconfig.toml       Start with custom config file
   toolui init                   Create toolui.config.toml in current directory
   toolui mcp                    Start MCP server (configure in your IDE)
+  toolui update                 Update to the latest version
 
 Documentation: https://github.com/tomagranate/toolui
 `.trim();
