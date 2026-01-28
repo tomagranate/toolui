@@ -2,10 +2,7 @@
 	"mcpServers": {
 		"toolui": {
 			"command": "bun",
-			"args": ["run", "./src/mcp-server.ts"],
-			"env": {
-				"TOOLUI_API_URL": "http://localhost:18765"
-			}
+			"args": ["run", "./src/index.tsx", "mcp"]
 		}
 	}
 }

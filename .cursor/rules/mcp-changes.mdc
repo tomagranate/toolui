@@ -1,0 +1,41 @@
+---
+description: Checklist for adding or modifying MCP tools/commands
+globs: src/commands/mcp.ts, src/lib/api/api-server.ts
+alwaysApply: false
+---
+
+# MCP Tool Changes Checklist
+
+When adding or modifying MCP tools, you MUST update these locations:
+
+## 1. MCP Command (`src/commands/mcp.ts`)
+
+The MCP server implementation used when running `toolui mcp`. Add/modify tools here using `server.tool()`.
+
+## 2. API Server (`src/lib/api/api-server.ts`)
+
+If the MCP tool calls an API endpoint (e.g., `/api/reload`), ensure the endpoint exists here.
+
+## 4. Documentation (`README.md`)
+
+Update the "Available MCP Tools" table in the MCP Integration section.
+
+## Example: Adding a new tool
+
+```typescript
+// In src/commands/mcp.ts:
+server.tool(
+  "my_new_tool",
+  "Description of what the tool does",
+  { /* zod schema for parameters */ },
+  async (params) => {
+    const result = await apiRequest<ResponseType>(apiUrl, "/api/my-endpoint", "POST");
+    return { content: [{ type: "text", text: result.message }] };
+  },
+);
+```
+
+Then add to README.md:
+```markdown
+| `my_new_tool` | Description of what the tool does |
+```

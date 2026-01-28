@@ -59,8 +59,7 @@ src/
 ├── cli.ts              # CLI argument parsing
 ├── index.tsx           # Main entry point
 ├── App.tsx             # Root React component
-├── mcp-server.ts       # MCP server entry
-├── commands/           # CLI subcommands (init, mcp)
+├── commands/           # CLI subcommands (init, mcp, update)
 ├── components/         # React components
 │   ├── CommandPalette/ # Command palette UI
 │   ├── HelpBar/        # Bottom help bar
