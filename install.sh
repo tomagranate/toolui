@@ -14,31 +14,78 @@ set -e
 
 # Configuration
 REPO="tomagranate/toolui"
+R2_CDN="https://toolui-releases.jetsail.xyz"
 GITHUB_URL="https://github.com/${REPO}"
 RELEASES_URL="${GITHUB_URL}/releases"
 
-# Colors
-RED='\033[0;31m'
+# Colors and formatting
+BOLD='\033[1m'
+DIM='\033[2m'
+RESET='\033[0m'
+CYAN='\033[0;36m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+RED='\033[0;31m'
 
-info() {
-    echo -e "${BLUE}==>${NC} $1"
+# Box drawing characters
+BOX_TL="╭"
+BOX_TR="╮"
+BOX_BL="╰"
+BOX_BR="╯"
+BOX_H="─"
+BOX_V="│"
+
+print_header() {
+    echo
+    echo -e "${CYAN}${BOLD}"
+    echo "  ╭─────────────────────────────────╮"
+    echo "  │         toolui installer        │"
+    echo "  ╰─────────────────────────────────╯"
+    echo -e "${RESET}"
+}
+
+step() {
+    echo -e "  ${CYAN}▸${RESET} $1"
+}
+
+substep() {
+    echo -e "    ${DIM}$1${RESET}"
 }
 
 success() {
-    echo -e "${GREEN}==>${NC} $1"
+    echo -e "  ${GREEN}✓${RESET} $1"
 }
 
 warn() {
-    echo -e "${YELLOW}Warning:${NC} $1"
+    echo -e "  ${YELLOW}!${RESET} $1"
 }
 
 error() {
-    echo -e "${RED}Error:${NC} $1" >&2
+    echo -e "  ${RED}✗${RESET} $1" >&2
     exit 1
+}
+
+# Progress bar for curl
+# Uses curl's built-in progress when available, otherwise shows spinner
+download_with_progress() {
+    local url="$1"
+    local output="$2"
+    local label="$3"
+    
+    # Check if we have a terminal
+    if [ -t 1 ]; then
+        # Terminal available - show progress bar
+        echo -ne "    "
+        curl -#fSL "$url" -o "$output" 2>&1 | while IFS= read -r -n1 char; do
+            echo -n "$char"
+        done
+        echo -ne "\r    "
+        # Clear the line and show completion
+        printf "%-60s\r" " "
+    else
+        # No terminal - silent download
+        curl -fsSL "$url" -o "$output"
+    fi
 }
 
 # Detect OS
@@ -69,7 +116,7 @@ get_latest_version() {
     local version
     version=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null | grep '"tag_name"' | sed -E 's/.*"v([^"]+)".*/\1/')
     if [ -z "$version" ]; then
-        error "Could not determine latest version. Check your internet connection or specify VERSION manually."
+        error "Could not determine latest version"
     fi
     echo "$version"
 }
@@ -95,40 +142,87 @@ check_path() {
     esac
 }
 
+# Try downloading from a URL, return 0 on success
+try_download() {
+    local url="$1"
+    local output="$2"
+    
+    if curl -fsSL "$url" -o "$output" 2>/dev/null; then
+        return 0
+    fi
+    return 1
+}
+
+# Download with fallback and progress
+download_binary() {
+    local version="$1"
+    local binary_name="$2"
+    local archive_ext="$3"
+    local output="$4"
+    
+    local r2_url="${R2_CDN}/v${version}/${binary_name}.${archive_ext}"
+    local github_url="${RELEASES_URL}/download/v${version}/${binary_name}.${archive_ext}"
+    
+    # Try R2 CDN first (faster)
+    if [ -t 1 ]; then
+        if curl -#fSL "$r2_url" -o "$output" 2>/dev/null; then
+            return 0
+        fi
+    else
+        if curl -fsSL "$r2_url" -o "$output" 2>/dev/null; then
+            return 0
+        fi
+    fi
+    
+    # Fallback to GitHub
+    substep "Falling back to GitHub releases..."
+    if [ -t 1 ]; then
+        if curl -#fSL "$github_url" -o "$output" 2>/dev/null; then
+            return 0
+        fi
+    else
+        if curl -fsSL "$github_url" -o "$output" 2>/dev/null; then
+            return 0
+        fi
+    fi
+    
+    return 1
+}
+
 # Main installation
 main() {
-    info "Installing toolui..."
-    echo
+    print_header
 
     # Detect platform
     local os arch
     os=$(detect_os)
     arch=$(detect_arch)
-    info "Detected platform: ${os}-${arch}"
+    step "Platform: ${BOLD}${os}-${arch}${RESET}"
 
     # Get version
     local version
     if [ -n "$VERSION" ]; then
         version="$VERSION"
     else
-        info "Fetching latest version..."
+        step "Fetching latest version..."
         version=$(get_latest_version)
     fi
-    info "Version: v${version}"
+    step "Version: ${BOLD}v${version}${RESET}"
 
     # Determine install directory
     local install_dir
     install_dir=$(get_install_dir)
-    info "Install directory: ${install_dir}"
+    step "Target: ${BOLD}${install_dir}${RESET}"
+    echo
 
     # Build download URL
     local binary_name="toolui-${os}-${arch}"
     local archive_ext="tar.gz"
+    local exe_ext=""
     if [ "$os" = "windows" ]; then
         archive_ext="zip"
-        binary_name="${binary_name}.exe"
+        exe_ext=".exe"
     fi
-    local download_url="${RELEASES_URL}/download/v${version}/${binary_name%.exe}.${archive_ext}"
 
     # Create temporary directory
     local tmp_dir
@@ -136,13 +230,13 @@ main() {
     trap "rm -rf '$tmp_dir'" EXIT
 
     # Download
-    info "Downloading from ${download_url}..."
-    if ! curl -fsSL "$download_url" -o "${tmp_dir}/archive.${archive_ext}"; then
-        error "Download failed. Please check that version v${version} exists for ${os}-${arch}."
+    step "Downloading..."
+    if ! download_binary "$version" "$binary_name" "$archive_ext" "${tmp_dir}/archive.${archive_ext}"; then
+        error "Download failed. Check that v${version} exists for ${os}-${arch}."
     fi
 
     # Extract
-    info "Extracting..."
+    step "Extracting..."
     cd "$tmp_dir"
     if [ "$archive_ext" = "tar.gz" ]; then
         tar -xzf "archive.tar.gz"
@@ -158,38 +252,43 @@ main() {
     fi
 
     # Install
-    info "Installing to ${install_dir}/toolui..."
+    step "Installing..."
     chmod +x "$binary_file"
     
     # Use sudo if needed and available
     if [ -w "$install_dir" ]; then
-        mv "$binary_file" "${install_dir}/toolui"
+        mv "$binary_file" "${install_dir}/toolui${exe_ext}"
     elif command -v sudo &>/dev/null; then
-        sudo mv "$binary_file" "${install_dir}/toolui"
+        sudo mv "$binary_file" "${install_dir}/toolui${exe_ext}"
     else
-        error "Cannot write to ${install_dir}. Please run with sudo or set INSTALL_DIR to a writable directory."
+        error "Cannot write to ${install_dir}. Run with sudo or set INSTALL_DIR."
     fi
 
     echo
-    success "toolui v${version} installed successfully!"
+    echo -e "  ${GREEN}${BOLD}╭─────────────────────────────────╮${RESET}"
+    echo -e "  ${GREEN}${BOLD}│${RESET}   ${GREEN}✓${RESET} Installed ${BOLD}toolui v${version}${RESET}     ${GREEN}${BOLD}│${RESET}"
+    echo -e "  ${GREEN}${BOLD}╰─────────────────────────────────╯${RESET}"
     echo
 
     # Check if install directory is in PATH
     if ! check_path "$install_dir"; then
         warn "${install_dir} is not in your PATH"
         echo
-        echo "Add this to your shell profile (.bashrc, .zshrc, etc.):"
-        echo
-        echo "    export PATH=\"\$PATH:${install_dir}\""
+        echo -e "  Add to your shell profile:"
+        echo -e "  ${DIM}export PATH=\"\$PATH:${install_dir}\"${RESET}"
         echo
     fi
 
-    # Verify installation
+    # Next steps
+    echo -e "  ${DIM}Get started:${RESET}"
     if command -v toolui &>/dev/null; then
-        echo "Run 'toolui --help' to get started."
+        echo -e "  ${CYAN}$${RESET} toolui init"
+        echo -e "  ${CYAN}$${RESET} toolui"
     else
-        echo "Run '${install_dir}/toolui --help' to get started."
+        echo -e "  ${CYAN}$${RESET} ${install_dir}/toolui init"
+        echo -e "  ${CYAN}$${RESET} ${install_dir}/toolui"
     fi
+    echo
 }
 
 main "$@"
