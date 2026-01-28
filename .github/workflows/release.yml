@@ -257,36 +257,6 @@ jobs:
       - name: Publish to NPM
         run: npm publish --provenance --access public --ignore-scripts
 
-  upload-to-r2:
-    name: Upload to Cloudflare R2
-    needs: [validate-version, release]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Prepare release assets
-        run: |
-          mkdir -p release
-          find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" \) -exec cp {} release/ \;
-          ls -la release/
-
-      - name: Upload to R2
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          VERSION="v${{ needs.validate-version.outputs.version }}"
-          npm install -g wrangler
-          for file in release/*; do
-            filename=$(basename "$file")
-            echo "Uploading $filename to R2..."
-            wrangler r2 object put "toolui-releases/${VERSION}/${filename}" --file "$file"
-          done
-          echo "All files uploaded to R2 at ${VERSION}/"
-
   update-homebrew:
     name: Update Homebrew Formula
     needs: release

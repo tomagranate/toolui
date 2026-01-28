@@ -12,7 +12,6 @@ const zlib = require("node:zlib");
 
 // Configuration
 const REPO = "tomagranate/toolui";
-const R2_CDN = "https://toolui-releases.jetsail.xyz";
 const GITHUB_RELEASES = `https://github.com/${REPO}/releases`;
 
 // Platform mappings
@@ -61,13 +60,6 @@ function printHeader() {
  */
 function step(msg) {
 	console.log(`  ${colors.cyan}▸${colors.reset} ${msg}`);
-}
-
-/**
- * Print substep message
- */
-function substep(msg) {
-	console.log(`    ${colors.dim}${msg}${colors.reset}`);
 }
 
 /**
@@ -258,30 +250,14 @@ async function downloadWindowsBinary(url, destPath) {
 }
 
 /**
- * Try downloading from multiple URLs with fallback
+ * Download binary from URL
  */
-async function downloadWithFallback(urls, destPath, isWindows) {
-	let lastError;
-
-	for (let i = 0; i < urls.length; i++) {
-		const url = urls[i];
-
-		try {
-			if (isWindows) {
-				await downloadWindowsBinary(url, destPath);
-			} else {
-				await downloadBinary(url, destPath);
-			}
-			return;
-		} catch (error) {
-			lastError = error;
-			if (i < urls.length - 1) {
-				substep("Falling back to GitHub releases...");
-			}
-		}
+async function downloadFromUrl(url, destPath, isWindows) {
+	if (isWindows) {
+		await downloadWindowsBinary(url, destPath);
+	} else {
+		await downloadBinary(url, destPath);
 	}
-
-	throw lastError;
 }
 
 async function main() {
@@ -326,15 +302,11 @@ async function main() {
 	}
 
 	const archiveExt = platform === "windows" ? "zip" : "tar.gz";
-
-	const urls = [
-		`${R2_CDN}/v${version}/${binaryName}.${archiveExt}`,
-		`${GITHUB_RELEASES}/download/v${version}/${binaryName}.${archiveExt}`,
-	];
+	const url = `${GITHUB_RELEASES}/download/v${version}/${binaryName}.${archiveExt}`;
 
 	try {
 		step("Downloading binary...");
-		await downloadWithFallback(urls, destPath, platform === "windows");
+		await downloadFromUrl(url, destPath, platform === "windows");
 
 		step("Extracting...");
 		success(`toolui v${version} ready`);

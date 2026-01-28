@@ -103,7 +103,9 @@ export function detectInstallMethodFromPath(
 function detectInstallMethod(): InstallMethod {
 	try {
 		// Get the path to this binary
-		const binaryPath = process.argv[1];
+		// In compiled Bun binaries, argv[0] is the binary path (C-style)
+		// This differs from Node.js where argv[0] is node and argv[1] is the script
+		const binaryPath = process.argv[0];
 		if (!binaryPath) {
 			return "unknown";
 		}
@@ -358,8 +360,8 @@ async function selfUpdate(): Promise<void> {
 	console.log("Extracting...");
 	const newBinaryPath = await extractTarGz(archivePath, tempDir);
 
-	// Get the current binary path
-	const currentBinaryPath = process.argv[1];
+	// Get the current binary path (argv[0] in compiled Bun binaries)
+	const currentBinaryPath = process.argv[0];
 	if (!currentBinaryPath) {
 		throw new Error("Could not determine current binary path");
 	}

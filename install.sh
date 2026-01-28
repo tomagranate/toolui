@@ -14,7 +14,6 @@ set -e
 
 # Configuration
 REPO="tomagranate/toolui"
-R2_CDN="https://toolui-releases.jetsail.xyz"
 GITHUB_URL="https://github.com/${REPO}"
 RELEASES_URL="${GITHUB_URL}/releases"
 
@@ -153,29 +152,15 @@ try_download() {
     return 1
 }
 
-# Download with fallback and progress
+# Download from GitHub releases
 download_binary() {
     local version="$1"
     local binary_name="$2"
     local archive_ext="$3"
     local output="$4"
     
-    local r2_url="${R2_CDN}/v${version}/${binary_name}.${archive_ext}"
     local github_url="${RELEASES_URL}/download/v${version}/${binary_name}.${archive_ext}"
     
-    # Try R2 CDN first (faster)
-    if [ -t 1 ]; then
-        if curl -#fSL "$r2_url" -o "$output" 2>/dev/null; then
-            return 0
-        fi
-    else
-        if curl -fsSL "$r2_url" -o "$output" 2>/dev/null; then
-            return 0
-        fi
-    fi
-    
-    # Fallback to GitHub
-    substep "Falling back to GitHub releases..."
     if [ -t 1 ]; then
         if curl -#fSL "$github_url" -o "$output" 2>/dev/null; then
             return 0

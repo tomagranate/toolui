@@ -123,13 +123,7 @@ ToolUI is built with:
 
 ## Release Infrastructure
 
-Releases are automated via GitHub Actions. Binaries are hosted on both GitHub Releases and Cloudflare R2 for faster global downloads.
-
-### R2 CDN Setup
-
-The release workflow uploads binaries to Cloudflare R2 at `toolui-releases.jetsail.xyz`. To configure this for your fork:
-
-The postinstall script tries R2 first for faster downloads, then falls back to GitHub Releases.
+Releases are automated via GitHub Actions. Binaries are hosted on GitHub Releases.
 
 ## Pull Request Guidelines
 
