@@ -234,6 +234,36 @@ server.tool(
 	},
 );
 
+// reload_config - Reload the configuration file and restart all processes
+server.tool(
+	"reload_config",
+	"Reload the toolui configuration file and restart all processes. " +
+		"Use this after modifying toolui.config.toml to apply changes without restarting toolui. " +
+		"All running processes will be stopped and restarted with the new configuration.",
+	{},
+	async () => {
+		const result = await apiRequest<{
+			message: string;
+			tools: string[];
+			warnings: string[];
+		}>("/api/reload", "POST");
+
+		let text = result.message;
+
+		if (result.tools.length > 0) {
+			text += `\n\nStarted processes:\n${result.tools.map((t) => `- ${t}`).join("\n")}`;
+		}
+
+		if (result.warnings.length > 0) {
+			text += `\n\nWarnings:\n${result.warnings.map((w) => `- ${w}`).join("\n")}`;
+		}
+
+		return {
+			content: [{ type: "text", text }],
+		};
+	},
+);
+
 // Register resources
 
 // toolui://processes - List all processes

@@ -8,6 +8,7 @@ titleAlign = "center"
 sidebarPosition = "left"
 horizontalTabPosition = "top"
 maxLogLines = 100000
+theme = "default"
 
 [mcp]
 enabled = true

@@ -1,9 +1,13 @@
 import type { Server } from "bun";
+import type { Config } from "../config";
 import type { ProcessManager } from "../processes";
 import { fuzzyFindLines, substringFindLines } from "../search";
 
 /** Default port for the MCP API server */
 export const DEFAULT_MCP_PORT = 18765;
+
+/** Callback for config reload events */
+export type OnConfigReloadCallback = (config: Config) => void;
 
 /** API response wrapper for success */
 interface ApiSuccessResponse<T> {
@@ -37,6 +41,9 @@ interface ProcessDetails extends ProcessSummary {
 	cwd?: string;
 }
 
+/** Name of the virtual tool used for MCP API logs */
+const MCP_API_TOOL_NAME = "MCP API";
+
 /**
  * HTTP API server for MCP integration.
  * Runs in-process and logs to a virtual tool tab.
@@ -45,12 +52,25 @@ export class ApiServer {
 	private server: Server | null = null;
 	private processManager: ProcessManager;
 	private port: number;
-	private toolIndex: number;
+	private onConfigReload: OnConfigReloadCallback | null = null;
 
-	constructor(processManager: ProcessManager, port: number, toolIndex: number) {
+	constructor(
+		processManager: ProcessManager,
+		port: number,
+		_toolIndex: number,
+	) {
 		this.processManager = processManager;
 		this.port = port;
-		this.toolIndex = toolIndex;
+		// Note: toolIndex parameter kept for backward compatibility but not used.
+		// We look up the tool by name to handle index changes after config reload.
+	}
+
+	/**
+	 * Set a callback to be called when config is reloaded.
+	 * The callback receives the new config so UI can update accordingly.
+	 */
+	setOnConfigReload(callback: OnConfigReloadCallback): void {
+		this.onConfigReload = callback;
 	}
 
 	/**
@@ -70,6 +90,7 @@ export class ApiServer {
 		this.log("  POST /api/processes/:name/stop");
 		this.log("  POST /api/processes/:name/restart");
 		this.log("  POST /api/processes/:name/clear");
+		this.log("  POST /api/reload");
 	}
 
 	/**
@@ -85,13 +106,14 @@ export class ApiServer {
 
 	/**
 	 * Log a message to the virtual tool tab.
+	 * Looks up the tool by name to handle index changes after config reload.
 	 */
 	private log(message: string): void {
+		const result = this.processManager.getToolByName(MCP_API_TOOL_NAME);
+		if (!result) return; // Virtual tool not found (shouldn't happen)
+
 		const timestamp = new Date().toISOString().slice(11, 19); // HH:MM:SS
-		this.processManager.addLogToTool(
-			this.toolIndex,
-			`[${timestamp}] ${message}`,
-		);
+		this.processManager.addLogToTool(result.index, `[${timestamp}] ${message}`);
 	}
 
 	/**
@@ -109,6 +131,11 @@ export class ApiServer {
 			// Health check
 			if (path === "/api/health" && method === "GET") {
 				return this.jsonResponse({ ok: true, data: { status: "healthy" } });
+			}
+
+			// Reload configuration
+			if (path === "/api/reload" && method === "POST") {
+				return await this.handleReload();
 			}
 
 			// List all processes
@@ -341,6 +368,51 @@ export class ApiServer {
 			ok: true,
 			data: { message: `Cleared logs: ${name}` },
 		});
+	}
+
+	/**
+	 * Reload the configuration and restart all processes.
+	 */
+	private async handleReload(): Promise<Response> {
+		this.log("Reloading configuration...");
+
+		try {
+			const { tools, config, warnings } = await this.processManager.reload();
+
+			// Log any config warnings
+			for (const warning of warnings) {
+				this.log(`Config warning: ${warning}`);
+			}
+
+			// Collect tool names for response (tools with commands)
+			const toolNames: string[] = [];
+			for (const tool of tools) {
+				if (tool?.config.command) {
+					toolNames.push(tool.config.name);
+				}
+			}
+
+			// Notify the UI about the config change
+			// The UI will handle starting tools with dependency awareness
+			if (this.onConfigReload) {
+				this.onConfigReload(config);
+			}
+
+			this.log(`Reloaded configuration with ${toolNames.length} tools`);
+
+			return this.jsonResponse({
+				ok: true,
+				data: {
+					message: `Reloaded configuration. ${toolNames.length} tools configured.`,
+					tools: toolNames,
+					warnings,
+				},
+			});
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			this.log(`Reload failed: ${message}`);
+			return this.jsonResponse({ ok: false, error: message }, 500);
+		}
 	}
 
 	/**

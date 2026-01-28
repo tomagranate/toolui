@@ -29,9 +29,13 @@ export class HealthChecker {
 	/**
 	 * Initialize the health checker with a list of tools.
 	 * Only tools with healthCheck configured will be tracked.
+	 * Clears any existing health states when reinitializing.
 	 */
 	initialize(tools: ToolConfig[]): void {
 		this.tools = tools;
+
+		// Clear existing health states to avoid stale data on reload
+		this.healthStates.clear();
 
 		// Initialize health state for tools with health checks
 		for (const tool of tools) {

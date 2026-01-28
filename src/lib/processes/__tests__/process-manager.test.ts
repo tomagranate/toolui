@@ -688,4 +688,294 @@ describe("ProcessManager", () => {
 		expect(apiResult).toBeDefined();
 		expect(apiResult?.tool.config.name).toBe("API Logger");
 	});
+
+	// =========================================================================
+	// Config Path and Reload Tests
+	// =========================================================================
+
+	test("setConfigPath/getConfigPath - stores and retrieves config path", async () => {
+		const configs: ToolConfig[] = [{ name: "test", command: "echo" }];
+		await processManager.initialize(configs);
+
+		expect(processManager.getConfigPath()).toBeUndefined();
+
+		processManager.setConfigPath("/path/to/config.toml");
+		expect(processManager.getConfigPath()).toBe("/path/to/config.toml");
+	});
+
+	test("reload - throws error when config path not set", async () => {
+		const configs: ToolConfig[] = [{ name: "test", command: "echo" }];
+		await processManager.initialize(configs);
+
+		// Config path not set
+		expect(processManager.getConfigPath()).toBeUndefined();
+
+		await expect(processManager.reload()).rejects.toThrow(
+			"Config path not set",
+		);
+	});
+
+	test("reload - throws error when config file not found", async () => {
+		const configs: ToolConfig[] = [{ name: "test", command: "echo" }];
+		await processManager.initialize(configs);
+		processManager.setConfigPath("/nonexistent/path/config.toml");
+
+		await expect(processManager.reload()).rejects.toThrow(
+			"Config file not found",
+		);
+	});
+
+	test("reload - preserves virtual tools across reload", async () => {
+		const fs = await import("node:fs/promises");
+		const path = await import("node:path");
+		const os = await import("node:os");
+
+		// Create a temp config file
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "toolui-test-"));
+		const configPath = path.join(tempDir, "config.toml");
+		await fs.writeFile(
+			configPath,
+			`
+[[tools]]
+name = "tool-a"
+command = "echo"
+args = ["a"]
+
+[[tools]]
+name = "tool-b"
+command = "echo"
+args = ["b"]
+`,
+		);
+
+		try {
+			// Initialize with different tools
+			const initialConfigs: ToolConfig[] = [
+				{ name: "old-tool", command: "echo", args: ["old"] },
+			];
+			await processManager.initialize(initialConfigs);
+			processManager.setConfigPath(configPath);
+
+			// Create a virtual tool
+			const virtualIndex = processManager.createVirtualTool("MCP API");
+			processManager.addLogToTool(virtualIndex, "Virtual tool log line");
+
+			// Verify initial state
+			expect(processManager.getTools().length).toBe(2); // old-tool + MCP API
+			expect(processManager.getToolByName("old-tool")).toBeDefined();
+			expect(processManager.getToolByName("MCP API")).toBeDefined();
+
+			// Reload config
+			const { tools, warnings } = await processManager.reload();
+
+			// Should have new tools + virtual tool
+			expect(tools.length).toBe(3); // tool-a + tool-b + MCP API
+			expect(warnings.length).toBe(0);
+
+			// Old tool should be gone
+			expect(processManager.getToolByName("old-tool")).toBeUndefined();
+
+			// New tools should exist
+			expect(processManager.getToolByName("tool-a")).toBeDefined();
+			expect(processManager.getToolByName("tool-b")).toBeDefined();
+
+			// Virtual tool should still exist with its logs preserved
+			const mcpResult = processManager.getToolByName("MCP API");
+			expect(mcpResult).toBeDefined();
+			expect(mcpResult?.tool.config.name).toBe("MCP API");
+			expect(mcpResult?.tool.logs.length).toBeGreaterThan(0);
+			expect(mcpResult?.tool.logs[0]?.segments[0]?.text).toBe(
+				"Virtual tool log line",
+			);
+		} finally {
+			// Cleanup
+			await fs.rm(tempDir, { recursive: true });
+		}
+	});
+
+	test("reload - stops running processes before reloading", async () => {
+		const fs = await import("node:fs/promises");
+		const path = await import("node:path");
+		const os = await import("node:os");
+
+		// Create a temp config file
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "toolui-test-"));
+		const configPath = path.join(tempDir, "config.toml");
+		await fs.writeFile(
+			configPath,
+			`
+[[tools]]
+name = "new-tool"
+command = "echo"
+args = ["new"]
+`,
+		);
+
+		try {
+			// Initialize with a running process
+			const initialConfigs: ToolConfig[] = [
+				{ name: "running-tool", command: "sleep", args: ["60"] },
+			];
+			await processManager.initialize(initialConfigs);
+			processManager.setConfigPath(configPath);
+
+			// Start the process
+			await processManager.startTool(0);
+			expect(processManager.getTool(0)?.status).toBe("running");
+			const oldPid = processManager.getTool(0)?.pid;
+			expect(oldPid).toBeDefined();
+
+			// Reload config
+			await processManager.reload();
+
+			// Old process should be gone, new tool should exist
+			expect(processManager.getToolByName("running-tool")).toBeUndefined();
+			expect(processManager.getToolByName("new-tool")).toBeDefined();
+		} finally {
+			await fs.rm(tempDir, { recursive: true });
+		}
+	});
+
+	test("reload - sets isShuttingDown during shutdown phase for UI feedback", async () => {
+		const fs = await import("node:fs/promises");
+		const path = await import("node:path");
+		const os = await import("node:os");
+
+		// Create a temp config file
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "toolui-test-"));
+		const configPath = path.join(tempDir, "config.toml");
+		await fs.writeFile(
+			configPath,
+			`
+[[tools]]
+name = "new-tool"
+command = "echo"
+args = ["new"]
+`,
+		);
+
+		try {
+			// Initialize with a running process
+			const initialConfigs: ToolConfig[] = [
+				{ name: "running-tool", command: "sleep", args: ["60"] },
+			];
+			await processManager.initialize(initialConfigs);
+			processManager.setConfigPath(configPath);
+
+			// Start the process
+			await processManager.startTool(0);
+			expect(processManager.getTool(0)?.status).toBe("running");
+
+			// Track isShuttingDown state changes via subscriber
+			let sawShuttingDownTrue = false;
+			const unsubscribe = processManager.subscribe("all", () => {
+				if (processManager.getIsShuttingDown()) {
+					sawShuttingDownTrue = true;
+				}
+			});
+
+			// Reload config - this should temporarily set isShuttingDown = true
+			await processManager.reload();
+
+			unsubscribe();
+
+			// Should have seen isShuttingDown = true during reload
+			expect(sawShuttingDownTrue).toBe(true);
+
+			// After reload completes, isShuttingDown should be false
+			expect(processManager.getIsShuttingDown()).toBe(false);
+		} finally {
+			await fs.rm(tempDir, { recursive: true });
+		}
+	});
+
+	test("reload - marks processes as shuttingDown status before stopping", async () => {
+		const fs = await import("node:fs/promises");
+		const path = await import("node:path");
+		const os = await import("node:os");
+
+		// Create a temp config file
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "toolui-test-"));
+		const configPath = path.join(tempDir, "config.toml");
+		await fs.writeFile(
+			configPath,
+			`
+[[tools]]
+name = "new-tool"
+command = "echo"
+`,
+		);
+
+		try {
+			const initialConfigs: ToolConfig[] = [
+				{ name: "running-tool", command: "sleep", args: ["60"] },
+			];
+			await processManager.initialize(initialConfigs);
+			processManager.setConfigPath(configPath);
+
+			await processManager.startTool(0);
+			expect(processManager.getTool(0)?.status).toBe("running");
+
+			// Track status changes
+			let sawShuttingDownStatus = false;
+			const unsubscribe = processManager.subscribe(0, () => {
+				const tool = processManager.getTool(0);
+				if (tool?.status === "shuttingDown") {
+					sawShuttingDownStatus = true;
+				}
+			});
+
+			await processManager.reload();
+
+			unsubscribe();
+
+			// Should have seen the shuttingDown status during reload
+			expect(sawShuttingDownStatus).toBe(true);
+		} finally {
+			await fs.rm(tempDir, { recursive: true });
+		}
+	});
+
+	test("reload - uses provided config path over stored path", async () => {
+		const fs = await import("node:fs/promises");
+		const path = await import("node:path");
+		const os = await import("node:os");
+
+		// Create two temp config files
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "toolui-test-"));
+		const configPath1 = path.join(tempDir, "config1.toml");
+		const configPath2 = path.join(tempDir, "config2.toml");
+
+		await fs.writeFile(
+			configPath1,
+			`
+[[tools]]
+name = "from-config-1"
+command = "echo"
+`,
+		);
+		await fs.writeFile(
+			configPath2,
+			`
+[[tools]]
+name = "from-config-2"
+command = "echo"
+`,
+		);
+
+		try {
+			const configs: ToolConfig[] = [{ name: "initial", command: "echo" }];
+			await processManager.initialize(configs);
+			processManager.setConfigPath(configPath1);
+
+			// Reload with explicit path (overrides stored path)
+			await processManager.reload(configPath2);
+
+			// Should have loaded from config2
+			expect(processManager.getToolByName("from-config-2")).toBeDefined();
+			expect(processManager.getToolByName("from-config-1")).toBeUndefined();
+		} finally {
+			await fs.rm(tempDir, { recursive: true });
+		}
+	});
 });

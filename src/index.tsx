@@ -8,7 +8,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { toast } from "./components/Toast";
 import { ApiServer, DEFAULT_MCP_PORT } from "./lib/api";
 import { copyToClipboard } from "./lib/clipboard";
-import { loadConfig } from "./lib/config";
+import { type Config, loadConfig } from "./lib/config";
 import { loadPreferences, updatePreference } from "./lib/preferences";
 import { ProcessManager } from "./lib/processes";
 import {
@@ -165,7 +165,16 @@ async function main() {
 		// Initialize process manager
 		const maxLogLines = config.ui?.maxLogLines ?? 10000;
 		const processManager = new ProcessManager(maxLogLines);
+		processManager.setConfigPath(configPath);
 		const initialTools = await processManager.initialize(config.tools);
+
+		// Config update callback - will be set by App component
+		let configUpdateCallback: ((newConfig: Config) => void) | null = null;
+		const handleRegisterConfigUpdate = (
+			callback: (newConfig: Config) => void,
+		) => {
+			configUpdateCallback = callback;
+		};
 
 		// Start MCP API server if enabled
 		let apiServer: ApiServer | null = null;
@@ -173,6 +182,14 @@ async function main() {
 			const port = config.mcp.port ?? DEFAULT_MCP_PORT;
 			const apiToolIndex = processManager.createVirtualTool("MCP API");
 			apiServer = new ApiServer(processManager, port, apiToolIndex);
+
+			// Set up config reload handler
+			apiServer.setOnConfigReload((newConfig: Config) => {
+				if (configUpdateCallback) {
+					configUpdateCallback(newConfig);
+				}
+			});
+
 			try {
 				apiServer.start();
 			} catch (error) {
@@ -237,6 +254,7 @@ async function main() {
 						config={config}
 						initialLineWrap={initialLineWrap}
 						onLineWrapChange={handleLineWrapChange}
+						onRegisterConfigUpdate={handleRegisterConfigUpdate}
 					/>
 				</ThemeProvider>,
 			),

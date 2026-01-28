@@ -1,4 +1,5 @@
 import type { ToolConfig, ToolState } from "../../types";
+import { type Config, loadConfig } from "../config";
 import { parseAnsiLine } from "../text";
 import {
 	getValidDependencies,
@@ -33,12 +34,30 @@ export class ProcessManager {
 	private maxLogLines: number;
 	private isShuttingDown = false;
 	private recentlyStopped = new Set<number>();
+	private configPath: string | undefined;
+
+	/** Virtual tool indices that should be preserved across reloads */
+	private virtualToolIndices = new Set<number>();
 
 	/** Subscribers for change notifications */
 	private subscribers = new Map<SubscriberKey, Set<ChangeCallback>>();
 
 	constructor(maxLogLines: number = 100000) {
 		this.maxLogLines = maxLogLines;
+	}
+
+	/**
+	 * Set the config path for reload functionality.
+	 */
+	setConfigPath(path: string): void {
+		this.configPath = path;
+	}
+
+	/**
+	 * Get the current config path.
+	 */
+	getConfigPath(): string | undefined {
+		return this.configPath;
 	}
 
 	/**
@@ -502,6 +521,135 @@ export class ProcessManager {
 	}
 
 	/**
+	 * Reload the configuration file and restart all processes.
+	 * Stops all running non-virtual processes, re-reads the config,
+	 * and returns the new tools and full config for the caller to apply.
+	 *
+	 * @param configPath - Optional path to config file (uses stored path if not provided)
+	 * @returns Object containing new tools, full config, and any config warnings
+	 * @throws Error if config path is not set or config is invalid
+	 */
+	async reload(configPath?: string): Promise<{
+		tools: ToolState[];
+		config: Config;
+		warnings: string[];
+	}> {
+		const path = configPath ?? this.configPath;
+		if (!path) {
+			throw new Error("Config path not set. Cannot reload.");
+		}
+
+		// Mark all running non-virtual processes as shuttingDown
+		const runningIndices: number[] = [];
+		for (let i = 0; i < this.tools.length; i++) {
+			if (this.virtualToolIndices.has(i)) continue;
+
+			const tool = this.tools[i];
+			if (tool?.process && tool.status === "running") {
+				tool.status = "shuttingDown";
+				this.addLog(i, "\n[RELOAD] Stopping for config reload...");
+				runningIndices.push(i);
+			}
+		}
+
+		// Set shutdown state to trigger full shutdown UI (yellow bar, filtered tabs)
+		if (runningIndices.length > 0) {
+			this.isShuttingDown = true;
+
+			// Notify all subscribers to trigger UI update with shutdown state
+			const allCallbacks = this.subscribers.get("all");
+			if (allCallbacks) {
+				for (const callback of allCallbacks) {
+					callback();
+				}
+			}
+
+			// Allow UI to render shutdown state
+			await new Promise((resolve) => setTimeout(resolve, 500));
+		}
+
+		// Stop all running non-virtual processes
+		const stopPromises: Promise<void>[] = [];
+		for (const i of runningIndices) {
+			stopPromises.push(this.stopTool(i));
+		}
+		await Promise.allSettled(stopPromises);
+
+		// Reset shutdown state before loading new config
+		this.isShuttingDown = false;
+		this.recentlyStopped.clear();
+
+		// Force kill any processes still running
+		for (let i = 0; i < this.tools.length; i++) {
+			if (this.virtualToolIndices.has(i)) continue;
+
+			const tool = this.tools[i];
+			if (tool?.process && !tool.process.killed) {
+				tool.process.kill("SIGKILL");
+				tool.process = null;
+				tool.status = "stopped";
+			}
+		}
+
+		// Clear PID file
+		await deletePidFile();
+
+		// Re-read config
+		const { config, warnings } = await loadConfig(path);
+
+		if (config.tools.length === 0) {
+			throw new Error("No tools configured in the config file.");
+		}
+
+		// Preserve virtual tools
+		const virtualTools: ToolState[] = [];
+		for (const idx of this.virtualToolIndices) {
+			const tool = this.tools[idx];
+			if (tool) {
+				virtualTools.push(tool);
+			}
+		}
+
+		// Create new tools from config
+		const newTools: ToolState[] = config.tools.map((toolConfig) => ({
+			config: toolConfig,
+			process: null,
+			logs: [],
+			status: "stopped" as const,
+			exitCode: null,
+			logTrimCount: 0,
+			logVersion: 0,
+		}));
+
+		// Update virtual tool indices for new positions
+		this.virtualToolIndices.clear();
+		const baseIndex = newTools.length;
+		for (let i = 0; i < virtualTools.length; i++) {
+			this.virtualToolIndices.add(baseIndex + i);
+		}
+
+		// Combine new tools with preserved virtual tools
+		this.tools = [...newTools, ...virtualTools];
+
+		// Clear tool-specific subscribers since indices have changed
+		// Keep only "all" subscribers
+		const allCallbacks = this.subscribers.get("all");
+		this.subscribers.clear();
+		if (allCallbacks) {
+			this.subscribers.set("all", allCallbacks);
+		}
+
+		// Notify all subscribers of the change
+		if (allCallbacks) {
+			for (const callback of allCallbacks) {
+				callback();
+			}
+		}
+
+		return { tools: this.tools, config, warnings };
+	}
+
+	/**
 	 * Find a tool by name.
 	 * @returns The tool index and state, or undefined if not found
 	 */
@@ -516,6 +664,7 @@ export class ProcessManager {
 	/**
 	 * Create a virtual tool (no spawned process) for internal use like MCP API.
 	 * The tool starts in "running" status and can receive logs via addLogToTool().
+	 * Virtual tools are preserved across config reloads.
 	 * @returns The index of the created virtual tool
 	 */
 	createVirtualTool(name: string): number {
@@ -529,7 +678,9 @@ export class ProcessManager {
 			logVersion: 0,
 		};
 		this.tools.push(tool);
-		return this.tools.length - 1;
+		const index = this.tools.length - 1;
+		this.virtualToolIndices.add(index);
+		return index;
 	}
 
 	/**

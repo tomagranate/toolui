@@ -69,6 +69,81 @@ describe("HealthChecker", () => {
 			expect(state?.status).toBe("starting");
 			expect(state?.failureCount).toBe(0);
 		});
+
+		test("should clear old health states when reinitializing (reload scenario)", async () => {
+			// First initialization with tool1 and tool2
+			const tools1: ToolConfig[] = [
+				{
+					name: "tool1",
+					command: "cmd1",
+					healthCheck: { url: "http://localhost:3000/health" },
+				},
+				{
+					name: "tool2",
+					command: "cmd2",
+					healthCheck: { url: "http://localhost:3001/health" },
+				},
+			];
+
+			// Mock successful fetch to make tool1 healthy
+			global.fetch = createMockFetch(() =>
+				Promise.resolve(new Response("OK", { status: 200 })),
+			);
+
+			checker.initialize(tools1);
+			await checker.checkNow("tool1");
+
+			// Verify tool1 is healthy and tool2 exists
+			expect(checker.getHealthState("tool1")?.status).toBe("healthy");
+			expect(checker.getHealthState("tool2")).toBeDefined();
+
+			// Reinitialize with different tools (simulating config reload)
+			const tools2: ToolConfig[] = [
+				{
+					name: "tool3",
+					command: "cmd3",
+					healthCheck: { url: "http://localhost:3002/health" },
+				},
+			];
+
+			checker.initialize(tools2);
+
+			// Old tools should be cleared
+			expect(checker.getHealthState("tool1")).toBeUndefined();
+			expect(checker.getHealthState("tool2")).toBeUndefined();
+
+			// New tool should be initialized fresh
+			expect(checker.getHealthState("tool3")).toBeDefined();
+			expect(checker.getHealthState("tool3")?.status).toBe("starting");
+		});
+
+		test("should reset existing tool to starting status on reinitialize", async () => {
+			const tools: ToolConfig[] = [
+				{
+					name: "tool1",
+					command: "cmd1",
+					healthCheck: { url: "http://localhost:3000/health" },
+				},
+			];
+
+			// Mock successful fetch
+			global.fetch = createMockFetch(() =>
+				Promise.resolve(new Response("OK", { status: 200 })),
+			);
+
+			checker.initialize(tools);
+			await checker.checkNow("tool1");
+
+			// tool1 should be healthy
+			expect(checker.getHealthState("tool1")?.status).toBe("healthy");
+
+			// Reinitialize with same tools (simulating reload with same config)
+			checker.initialize(tools);
+
+			// tool1 should be reset to starting, not retain healthy status
+			expect(checker.getHealthState("tool1")?.status).toBe("starting");
+			expect(checker.getHealthState("tool1")?.failureCount).toBe(0);
+		});
 	});
 
 	describe("getAllHealthStates", () => {

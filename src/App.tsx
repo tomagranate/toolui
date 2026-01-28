@@ -42,6 +42,8 @@ interface AppProps {
 	initialLineWrap?: boolean;
 	/** Callback when line wrap changes (to save preference) */
 	onLineWrapChange?: (lineWrap: boolean) => void;
+	/** Callback to register for config updates (called when reload happens) */
+	onRegisterConfigUpdate?: (callback: (newConfig: Config) => void) => void;
 }
 
 const DEFAULT_WIDTH_THRESHOLD = 100;
@@ -50,12 +52,94 @@ export function App({
 	processManager,
 	initialTools,
 	renderer,
-	config,
+	config: initialConfig,
 	initialLineWrap = true,
 	onLineWrapChange,
+	onRegisterConfigUpdate,
 }: AppProps) {
-	// Get theme from context
-	const { theme } = useTheme();
+	// Store config as state so it can be updated on reload
+	const [config, setConfig] = useState<Config>(initialConfig);
+
+	// Get theme from context (includes saveTheme for dynamic updates)
+	const { theme, saveTheme, themeKey } = useTheme();
+
+	// Track theme key ref for use in callbacks
+	const themeKeyRef = useRef(themeKey);
+	useEffect(() => {
+		themeKeyRef.current = themeKey;
+	}, [themeKey]);
+
+	// Register config update callback on mount
+	useEffect(() => {
+		if (onRegisterConfigUpdate) {
+			onRegisterConfigUpdate((newConfig: Config) => {
+				setConfig(newConfig);
+
+				// Reset to home tab (or first tab if home disabled)
+				setActiveIndex(0);
+
+				// Reset health states - they'll be repopulated as health checks run
+				setHealthStates(new Map());
+
+				// Update tool configs ref for health checker
+				toolConfigsRef.current = newConfig.tools;
+
+				// Reinitialize health checker with new tool configs if it exists
+				if (healthCheckerRef.current) {
+					healthCheckerRef.current.stop();
+					healthCheckerRef.current.initialize(newConfig.tools);
+					healthCheckerRef.current.start();
+				}
+
+				// Update theme if it changed in the new config
+				const newThemeKey = newConfig.ui?.theme;
+				if (newThemeKey && newThemeKey !== themeKeyRef.current) {
+					saveTheme(newThemeKey);
+					toast.info(`Theme changed to "${newThemeKey}"`);
+				}
+
+				// Start tools with dependency awareness (same logic as initial mount)
+				const newHasDependencies = newConfig.tools.some(
+					(t) => t.dependsOn && t.dependsOn.length > 0,
+				);
+
+				// Callback to check if a tool is ready for dependents
+				const isToolReady = (toolName: string): boolean => {
+					const currentTools = toolsRef.current;
+					const currentHealthStates = healthStatesRef.current;
+
+					const tool = currentTools.find((t) => t.config.name === toolName);
+					if (!tool) return false;
+
+					// If tool has health check, it's ready when healthy
+					if (tool.config.healthCheck) {
+						const healthState = currentHealthStates.get(toolName);
+						return healthState?.status === "healthy";
+					}
+
+					// If no health check, it's ready when running
+					return tool.status === "running";
+				};
+
+				if (newHasDependencies) {
+					processManager.startAllToolsWithDependencies(isToolReady);
+				} else {
+					// No dependencies, start all tools immediately
+					const allTools = processManager.getTools();
+					for (let i = 0; i < allTools.length; i++) {
+						const tool = allTools[i];
+						// Only start non-virtual tools (those with commands)
+						if (tool?.config.command) {
+							processManager.startTool(i);
+						}
+					}
+				}
+
+				// Show toast for successful reload
+				toast.info("Configuration reloaded");
+			});
+		}
+	}, [onRegisterConfigUpdate, saveTheme, processManager]);
 
 	// Use hook that only re-renders when tool status/logs actually change (event-driven)
 	const tools = useToolsList(processManager);

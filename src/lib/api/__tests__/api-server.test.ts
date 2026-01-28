@@ -592,4 +592,90 @@ describe("ApiServer", () => {
 			expect(response.headers.get("Content-Type")).toBe("application/json");
 		});
 	});
+
+	// ==========================================================================
+	// Reload Configuration
+	// ==========================================================================
+	describe("POST /api/reload", () => {
+		test("returns error when config path not set", async () => {
+			// The test processManager doesn't have a config path set
+			const response = await fetch(apiUrl("/api/reload"), { method: "POST" });
+			const json = (await response.json()) as ApiResponse;
+
+			expect(response.status).toBe(500);
+			expect(json.ok).toBe(false);
+			expect(json.error).toContain("Config path not set");
+		});
+
+		test("logs go to correct MCP API tool after config reload", async () => {
+			const fs = await import("node:fs/promises");
+			const path = await import("node:path");
+			const os = await import("node:os");
+
+			// Create a temp config file with different tools
+			const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "toolui-test-"));
+			const configPath = path.join(tempDir, "config.toml");
+			await fs.writeFile(
+				configPath,
+				`
+[[tools]]
+name = "new-tool-1"
+command = "echo"
+args = ["one"]
+
+[[tools]]
+name = "new-tool-2"
+command = "echo"
+args = ["two"]
+
+[[tools]]
+name = "new-tool-3"
+command = "echo"
+args = ["three"]
+`,
+			);
+
+			try {
+				processManager.setConfigPath(configPath);
+
+				// Get the MCP API tool's log count before reload
+				const mcpToolBefore = processManager.getToolByName("MCP API");
+				expect(mcpToolBefore).toBeDefined();
+				const logCountBefore = mcpToolBefore!.tool.logs.length;
+
+				// Perform reload
+				await processManager.reload();
+
+				// After reload, the tools array has been reorganized:
+				// - newTools (3 tools from config) come first
+				// - virtual tools (MCP API) are appended after
+				// So MCP API should now be at index 3 (0-indexed)
+				const mcpToolAfter = processManager.getToolByName("MCP API");
+				expect(mcpToolAfter).toBeDefined();
+				expect(mcpToolAfter!.index).toBe(3); // Verify index changed
+
+				// Make a request - this should log to the MCP API tool
+				await fetch(apiUrl("/api/health"));
+
+				// Verify the log went to the MCP API tool (not a random tool)
+				const mcpToolFinal = processManager.getToolByName("MCP API");
+				expect(mcpToolFinal!.tool.logs.length).toBeGreaterThan(logCountBefore);
+
+				// Check the log contains the request
+				const lastLog = mcpToolFinal!.tool.logs.slice(-1)[0];
+				const logText = lastLog?.segments.map((seg) => seg.text).join("") ?? "";
+				expect(logText).toContain("GET /api/health");
+
+				// Verify other tools don't have this log (they shouldn't have API logs)
+				const newTool1 = processManager.getToolByName("new-tool-1");
+				const newTool1Logs =
+					newTool1?.tool.logs
+						.map((l) => l.segments.map((s) => s.text).join(""))
+						.join("") ?? "";
+				expect(newTool1Logs).not.toContain("GET /api/health");
+			} finally {
+				await fs.rm(tempDir, { recursive: true });
+			}
+		});
+	});
 });
