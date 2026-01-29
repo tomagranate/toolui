@@ -1,4 +1,5 @@
 import type { Server } from "bun";
+import type { HealthStatus } from "../../types";
 import type { Config } from "../config";
 import type { ProcessManager } from "../processes";
 import { fuzzyFindLines, substringFindLines } from "../search";
@@ -8,6 +9,9 @@ export const DEFAULT_MCP_PORT = 18765;
 
 /** Callback for config reload events */
 export type OnConfigReloadCallback = (config: Config) => void;
+
+/** Callback to get health status for a tool */
+export type GetHealthStatusCallback = (toolName: string) => HealthStatus | null;
 
 /** API response wrapper for success */
 interface ApiSuccessResponse<T> {
@@ -23,6 +27,9 @@ interface ApiErrorResponse {
 
 type ApiResponse<T> = ApiSuccessResponse<T> | ApiErrorResponse;
 
+/** Number of recent log lines to include in process list */
+const RECENT_LOGS_COUNT = 20;
+
 /** Process summary returned by list endpoint */
 interface ProcessSummary {
 	name: string;
@@ -32,6 +39,10 @@ interface ProcessSummary {
 	logCount: number;
 	pid?: number;
 	uptime?: number; // milliseconds since start
+	/** Health status if the tool has a health check configured */
+	healthStatus?: HealthStatus;
+	/** Last N log lines (plain text) */
+	recentLogs?: string[];
 }
 
 /** Full process details */
@@ -39,6 +50,7 @@ interface ProcessDetails extends ProcessSummary {
 	command: string;
 	args?: string[];
 	cwd?: string;
+	// healthStatus is inherited from ProcessSummary
 }
 
 /** Name of the virtual tool used for MCP API logs */
@@ -53,6 +65,7 @@ export class ApiServer {
 	private processManager: ProcessManager;
 	private port: number;
 	private onConfigReload: OnConfigReloadCallback | null = null;
+	private getHealthStatus: GetHealthStatusCallback | null = null;
 
 	constructor(
 		processManager: ProcessManager,
@@ -71,6 +84,14 @@ export class ApiServer {
 	 */
 	setOnConfigReload(callback: OnConfigReloadCallback): void {
 		this.onConfigReload = callback;
+	}
+
+	/**
+	 * Set a callback to get health status for a tool.
+	 * Returns the health status (starting/healthy/unhealthy) or null if no health check configured.
+	 */
+	setGetHealthStatus(callback: GetHealthStatusCallback): void {
+		this.getHealthStatus = callback;
 	}
 
 	/**
@@ -201,15 +222,33 @@ export class ApiServer {
 		const tools = this.processManager.getTools();
 		const processes: ProcessSummary[] = tools
 			.filter((tool) => tool.config.name !== "MCP API") // Exclude self
-			.map((tool) => ({
-				name: tool.config.name,
-				description: tool.config.description,
-				status: tool.status,
-				exitCode: tool.exitCode,
-				logCount: tool.logs.length,
-				pid: tool.pid,
-				uptime: tool.startTime ? Date.now() - tool.startTime : undefined,
-			}));
+			.map((tool) => {
+				// Get recent logs as plain text
+				const recentLogs = tool.logs
+					.slice(-RECENT_LOGS_COUNT)
+					.map((logLine) => logLine.segments.map((seg) => seg.text).join(""));
+
+				const summary: ProcessSummary = {
+					name: tool.config.name,
+					description: tool.config.description,
+					status: tool.status,
+					exitCode: tool.exitCode,
+					logCount: tool.logs.length,
+					pid: tool.pid,
+					uptime: tool.startTime ? Date.now() - tool.startTime : undefined,
+					recentLogs,
+				};
+
+				// Include health status if available
+				if (tool.config.healthCheck && this.getHealthStatus) {
+					const healthStatus = this.getHealthStatus(tool.config.name);
+					if (healthStatus) {
+						summary.healthStatus = healthStatus;
+					}
+				}
+
+				return summary;
+			});
 
 		return this.jsonResponse({ ok: true, data: processes });
 	}
@@ -238,6 +277,14 @@ export class ApiServer {
 			args: tool.config.args,
 			cwd: tool.config.cwd,
 		};
+
+		// Include health status if available
+		if (tool.config.healthCheck && this.getHealthStatus) {
+			const healthStatus = this.getHealthStatus(tool.config.name);
+			if (healthStatus) {
+				details.healthStatus = healthStatus;
+			}
+		}
 
 		return this.jsonResponse({ ok: true, data: details });
 	}

@@ -15,11 +15,15 @@ import { loadConfig } from "../lib/config";
 interface ProcessSummary {
 	name: string;
 	description?: string;
-	status: "running" | "stopped" | "error" | "shuttingDown";
+	status: "running" | "stopped" | "error" | "shuttingDown" | "waiting";
 	exitCode: number | null;
 	logCount: number;
 	pid?: number;
 	uptime?: number;
+	/** Health status if the tool has a health check configured */
+	healthStatus?: "starting" | "healthy" | "unhealthy";
+	/** Last 20 log lines (plain text) */
+	recentLogs?: string[];
 }
 
 interface LogsResponse {
@@ -130,10 +134,27 @@ export async function runMcp(configPath?: string): Promise<void> {
 					const uptimeInfo = p.uptime
 						? ` (up ${Math.round(p.uptime / 1000)}s)`
 						: "";
+					const healthInfo = p.healthStatus
+						? ` [health: ${p.healthStatus}]`
+						: "";
 					const desc = p.description ? `\n  ${p.description}` : "";
-					return `- ${p.name}: ${status}${exitInfo}${pidInfo}${uptimeInfo} (${p.logCount} lines)${desc}`;
+
+					// Format recent logs with indentation
+					let logsSection = "";
+					if (p.recentLogs && p.recentLogs.length > 0) {
+						const logsHeader =
+							p.recentLogs.length < p.logCount
+								? `\n  Recent logs (last ${p.recentLogs.length} of ${p.logCount}):`
+								: `\n  Logs (${p.logCount} lines):`;
+						const logsText = p.recentLogs
+							.map((line) => `    ${line}`)
+							.join("\n");
+						logsSection = `${logsHeader}\n${logsText}`;
+					}
+
+					return `- ${p.name}: ${status}${exitInfo}${pidInfo}${uptimeInfo}${healthInfo} (${p.logCount} lines)${desc}${logsSection}`;
 				})
-				.join("\n");
+				.join("\n\n");
 
 			return {
 				content: [

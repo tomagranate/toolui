@@ -210,7 +210,7 @@ Add to your MCP configuration (e.g., `~/.cursor/mcp.json`):
 
 | Tool | Description |
 |------|-------------|
-| `list_processes` | List all processes with their status |
+| `list_processes` | List all processes with status, health, and last 20 log lines |
 | `get_logs` | Get recent logs (supports search and line limits) |
 | `stop_process` | Stop a running process |
 | `restart_process` | Restart a process |
