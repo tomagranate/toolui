@@ -44,6 +44,10 @@ interface AppProps {
 	onLineWrapChange?: (lineWrap: boolean) => void;
 	/** Callback to register for config updates (called when reload happens) */
 	onRegisterConfigUpdate?: (callback: (newConfig: Config) => void) => void;
+	/** Callback to register health status getter (for MCP API) */
+	onRegisterGetHealthStatus?: (
+		callback: (toolName: string) => "starting" | "healthy" | "unhealthy" | null,
+	) => void;
 }
 
 const DEFAULT_WIDTH_THRESHOLD = 100;
@@ -56,6 +60,7 @@ export function App({
 	initialLineWrap = true,
 	onLineWrapChange,
 	onRegisterConfigUpdate,
+	onRegisterGetHealthStatus,
 }: AppProps) {
 	// Store config as state so it can be updated on reload
 	const [config, setConfig] = useState<Config>(initialConfig);
@@ -200,6 +205,16 @@ export function App({
 			healthCheckerRef.current = null;
 		};
 	}, [needsHealthChecker]);
+
+	// Register health status getter for MCP API
+	useEffect(() => {
+		if (onRegisterGetHealthStatus) {
+			onRegisterGetHealthStatus((toolName: string) => {
+				const healthState = healthStatesRef.current.get(toolName);
+				return healthState?.status ?? null;
+			});
+		}
+	}, [onRegisterGetHealthStatus]);
 
 	// Watch for process status changes and trigger immediate health checks
 	const prevToolStatusesForHealthRef = useRef<Map<string, string>>(new Map());
@@ -944,9 +959,11 @@ export function App({
 						attributes={TextAttributes.BOLD}
 						fg={theme.colors.warningForeground}
 					>
-						{StatusIcons.WARNING} WARNING: {shuttingDownCount} process
-						{shuttingDownCount > 1 ? "es" : ""} shutting down gracefully. Please
-						wait... Ctrl+C to force quit.
+						{terminalWidth < 50
+							? `${StatusIcons.WARNING} Shutting down... ^C force`
+							: terminalWidth < 70
+								? `${StatusIcons.WARNING} Shutting down gracefully... Ctrl+C to force`
+								: `${StatusIcons.WARNING} WARNING: ${shuttingDownCount} process${shuttingDownCount > 1 ? "es" : ""} shutting down gracefully. Please wait... Ctrl+C to force quit.`}
 					</text>
 				</box>
 			)}

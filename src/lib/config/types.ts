@@ -30,12 +30,30 @@ export interface McpConfig {
 	port?: number;
 }
 
+/** Process management configuration */
+export interface ProcessConfig {
+	/**
+	 * Whether to cleanup orphaned processes from previous sessions on startup.
+	 * When true (default), toolui will kill any processes that were started by
+	 * a previous instance of toolui (using the same config file) that crashed
+	 * or was terminated without proper cleanup.
+	 *
+	 * Set to false if you want to manage process lifecycle manually or if you're
+	 * running multiple toolui instances that might share process names.
+	 *
+	 * Default: true
+	 */
+	cleanupOrphans?: boolean;
+}
+
 export interface Config {
 	tools: ToolConfig[];
 	/** Home tab configuration */
 	home?: HomeConfig;
 	/** MCP API configuration for AI agent integration */
 	mcp?: McpConfig;
+	/** Process management configuration */
+	processes?: ProcessConfig;
 	ui?: {
 		/** Sidebar position for wide terminals: "left" or "right". Default: "left" */
 		sidebarPosition?: "left" | "right";

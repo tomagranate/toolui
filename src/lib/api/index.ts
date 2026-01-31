@@ -1,1 +1,5 @@
-export { ApiServer, DEFAULT_MCP_PORT } from "./api-server";
+export {
+	ApiServer,
+	DEFAULT_MCP_PORT,
+	type GetHealthStatusCallback,
+} from "./api-server";

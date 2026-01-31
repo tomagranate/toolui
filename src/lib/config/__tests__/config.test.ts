@@ -273,4 +273,122 @@ command = "echo"
 			await unlink(configPath).catch(() => {});
 		}
 	});
+
+	// Process config tests
+	describe("process config", () => {
+		test("loadConfig - valid processes config with cleanupOrphans true", async () => {
+			const configPath = join(tempDir, `test-config-${Date.now()}.toml`);
+			const configContent = `
+[processes]
+cleanupOrphans = true
+
+[[tools]]
+name = "test"
+command = "echo"
+			`.trim();
+
+			await writeFile(configPath, configContent);
+
+			try {
+				const { config, warnings } = await loadConfig(configPath);
+				expect(warnings).toHaveLength(0);
+				expect(config.processes?.cleanupOrphans).toBe(true);
+			} finally {
+				await unlink(configPath).catch(() => {});
+			}
+		});
+
+		test("loadConfig - valid processes config with cleanupOrphans false", async () => {
+			const configPath = join(tempDir, `test-config-${Date.now()}.toml`);
+			const configContent = `
+[processes]
+cleanupOrphans = false
+
+[[tools]]
+name = "test"
+command = "echo"
+			`.trim();
+
+			await writeFile(configPath, configContent);
+
+			try {
+				const { config, warnings } = await loadConfig(configPath);
+				expect(warnings).toHaveLength(0);
+				expect(config.processes?.cleanupOrphans).toBe(false);
+			} finally {
+				await unlink(configPath).catch(() => {});
+			}
+		});
+
+		test("loadConfig - invalid cleanupOrphans type returns warning", async () => {
+			const configPath = join(tempDir, `test-config-${Date.now()}.toml`);
+			const configContent = `
+[processes]
+cleanupOrphans = "yes"
+
+[[tools]]
+name = "test"
+command = "echo"
+			`.trim();
+
+			await writeFile(configPath, configContent);
+
+			try {
+				const { config, warnings } = await loadConfig(configPath);
+				expect(config.tools).toHaveLength(1);
+				// cleanupOrphans should not be set (invalid value ignored)
+				expect(config.processes?.cleanupOrphans).toBeUndefined();
+				expect(warnings).toHaveLength(1);
+				expect(warnings[0]).toContain("cleanupOrphans");
+				expect(warnings[0]).toContain("boolean");
+			} finally {
+				await unlink(configPath).catch(() => {});
+			}
+		});
+
+		test("loadConfig - unknown processes option returns warning", async () => {
+			const configPath = join(tempDir, `test-config-${Date.now()}.toml`);
+			const configContent = `
+[processes]
+cleanupOrphans = true
+unknownOption = "test"
+
+[[tools]]
+name = "test"
+command = "echo"
+			`.trim();
+
+			await writeFile(configPath, configContent);
+
+			try {
+				const { config, warnings } = await loadConfig(configPath);
+				expect(config.tools).toHaveLength(1);
+				expect(config.processes?.cleanupOrphans).toBe(true);
+				expect(warnings).toHaveLength(1);
+				expect(warnings[0]).toContain("processes");
+				expect(warnings[0]).toContain("unknownOption");
+			} finally {
+				await unlink(configPath).catch(() => {});
+			}
+		});
+
+		test("loadConfig - no processes section means undefined (defaults apply)", async () => {
+			const configPath = join(tempDir, `test-config-${Date.now()}.toml`);
+			const configContent = `
+[[tools]]
+name = "test"
+command = "echo"
+			`.trim();
+
+			await writeFile(configPath, configContent);
+
+			try {
+				const { config, warnings } = await loadConfig(configPath);
+				expect(warnings).toHaveLength(0);
+				expect(config.processes).toBeUndefined();
+			} finally {
+				await unlink(configPath).catch(() => {});
+			}
+		});
+	});
 });

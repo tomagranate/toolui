@@ -9,6 +9,7 @@ sidebarPosition = "left"
 horizontalTabPosition = "top"
 maxLogLines = 100000
 theme = "default"
+showTabNumbers = true
 
 [mcp]
 enabled = true

@@ -166,7 +166,9 @@ async function main() {
 		const maxLogLines = config.ui?.maxLogLines ?? 10000;
 		const processManager = new ProcessManager(maxLogLines);
 		processManager.setConfigPath(configPath);
-		const initialTools = await processManager.initialize(config.tools);
+		const initialTools = await processManager.initialize(config.tools, {
+			cleanupOrphans: config.processes?.cleanupOrphans ?? true,
+		});
 
 		// Config update callback - will be set by App component
 		let configUpdateCallback: ((newConfig: Config) => void) | null = null;
@@ -174,6 +176,18 @@ async function main() {
 			callback: (newConfig: Config) => void,
 		) => {
 			configUpdateCallback = callback;
+		};
+
+		// Health status getter callback - will be set by App component
+		let healthStatusGetterCallback:
+			| ((toolName: string) => "starting" | "healthy" | "unhealthy" | null)
+			| null = null;
+		const handleRegisterGetHealthStatus = (
+			callback: (
+				toolName: string,
+			) => "starting" | "healthy" | "unhealthy" | null,
+		) => {
+			healthStatusGetterCallback = callback;
 		};
 
 		// Start MCP API server if enabled
@@ -188,6 +202,14 @@ async function main() {
 				if (configUpdateCallback) {
 					configUpdateCallback(newConfig);
 				}
+			});
+
+			// Set up health status getter (proxies to the callback from App)
+			apiServer.setGetHealthStatus((toolName: string) => {
+				if (healthStatusGetterCallback) {
+					return healthStatusGetterCallback(toolName);
+				}
+				return null;
 			});
 
 			try {
@@ -255,6 +277,7 @@ async function main() {
 						initialLineWrap={initialLineWrap}
 						onLineWrapChange={handleLineWrapChange}
 						onRegisterConfigUpdate={handleRegisterConfigUpdate}
+						onRegisterGetHealthStatus={handleRegisterGetHealthStatus}
 					/>
 				</ThemeProvider>,
 			),

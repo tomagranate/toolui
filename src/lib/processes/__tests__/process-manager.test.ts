@@ -978,4 +978,40 @@ command = "echo"
 			await fs.rm(tempDir, { recursive: true });
 		}
 	});
+
+	// =========================================================================
+	// Orphan Cleanup Tests
+	// =========================================================================
+
+	test("initialize - cleanupOrphans defaults to true", async () => {
+		// This test just verifies the option is accepted
+		// Actual orphan cleanup is difficult to test without mocking
+		const configs: ToolConfig[] = [{ name: "test", command: "echo" }];
+
+		// Default behavior (cleanupOrphans = true)
+		await processManager.initialize(configs);
+
+		const tools = processManager.getTools();
+		expect(tools).toHaveLength(1);
+	});
+
+	test("initialize - cleanupOrphans can be disabled", async () => {
+		const configs: ToolConfig[] = [{ name: "test", command: "echo" }];
+
+		// Explicitly disable orphan cleanup
+		await processManager.initialize(configs, { cleanupOrphans: false });
+
+		const tools = processManager.getTools();
+		expect(tools).toHaveLength(1);
+	});
+
+	test("initialize - cleanupOrphans true is explicit option", async () => {
+		const configs: ToolConfig[] = [{ name: "test", command: "echo" }];
+
+		// Explicitly enable orphan cleanup
+		await processManager.initialize(configs, { cleanupOrphans: true });
+
+		const tools = processManager.getTools();
+		expect(tools).toHaveLength(1);
+	});
 });

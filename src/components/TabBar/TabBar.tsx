@@ -113,7 +113,12 @@ export function TabBar({
 	// Navigation is signaled by navigationKey changing
 	// biome-ignore lint/correctness/useExhaustiveDependencies: scrollOffset and lastVisibleIndex are read from current render but not in deps - we only trigger on navigation events
 	useEffect(() => {
-		if (vertical || activeIndex < 0 || activeIndex >= tools.length) {
+		// Convert display activeIndex to tool array index
+		// When home is enabled, activeIndex 0 = home, 1+ = tools
+		// scrollOffset and lastVisibleIndex are tool array indices
+		const toolActiveIndex = homeEnabled ? activeIndex - 1 : activeIndex;
+
+		if (vertical || toolActiveIndex < 0 || toolActiveIndex >= tools.length) {
 			return;
 		}
 
@@ -144,26 +149,35 @@ export function TabBar({
 		pendingNavigationRef.current = false;
 
 		// Check if active tab is in the visible range [scrollOffset, lastVisibleIndex]
+		// Use toolActiveIndex (tool array index) for comparison with scrollOffset/lastVisibleIndex
 		const isActiveVisible =
-			activeIndex >= scrollOffset && activeIndex <= lastVisibleIndex;
+			toolActiveIndex >= scrollOffset && toolActiveIndex <= lastVisibleIndex;
 
 		if (!isActiveVisible) {
 			// If active tab is before the visible range, scroll left to show it
-			if (activeIndex < scrollOffset) {
-				setScrollOffset(activeIndex);
+			if (toolActiveIndex < scrollOffset) {
+				setScrollOffset(toolActiveIndex);
 			}
 			// If active tab is after the visible range, scroll right
 			else {
 				const newOffset = calculateMinOffsetForTab(
 					tools,
-					activeIndex,
+					toolActiveIndex,
 					width,
 					showTabNumbers,
 				);
 				setScrollOffset(newOffset);
 			}
 		}
-	}, [activeIndex, navigationKey, tools, vertical, width, showTabNumbers]);
+	}, [
+		activeIndex,
+		navigationKey,
+		tools,
+		vertical,
+		width,
+		showTabNumbers,
+		homeEnabled,
+	]);
 
 	// Scroll handlers - mark as manual scroll
 	// Single step scroll (for wheel)
@@ -293,7 +307,7 @@ export function TabBar({
 							attributes={activeIndex === 0 ? TextAttributes.BOLD : 0}
 							fg={activeIndex === 0 ? colors.accentForeground : colors.text}
 						>
-							{HOME_ICON} Home
+							{HOME_ICON} {showTabNumbers ? "`:" : ""}Home
 						</text>
 					</box>
 				)}
@@ -320,6 +334,7 @@ export function TabBar({
 								fg={getTabTextColor(tool, tabIndex)}
 							>
 								{getStatusIcon(tool.status)}
+								{showTabNumbers && index < 9 ? `${index + 1}:` : ""}
 								{tool.config.name}
 							</text>
 						</box>
@@ -401,8 +416,7 @@ export function TabBar({
 						attributes={activeIndex === 0 ? TextAttributes.BOLD : 0}
 						fg={activeIndex === 0 ? colors.accentForeground : colors.text}
 					>
-						{showTabNumbers ? "`:" : ""}
-						{HOME_ICON} Home
+						{HOME_ICON} {showTabNumbers ? "`:" : ""}Home
 					</text>
 				</box>
 			)}
@@ -438,8 +452,8 @@ export function TabBar({
 							attributes={tabIndex === activeIndex ? TextAttributes.BOLD : 0}
 							fg={getTabTextColor(tool, tabIndex)}
 						>
-							{showTabNumbers && tabIndex < 9 ? `${tabIndex + 1}:` : ""}
 							{getStatusIcon(tool.status)}
+							{showTabNumbers && index < 9 ? `${index + 1}:` : ""}
 							{truncateName(tool.config.name)}
 						</text>
 					</box>

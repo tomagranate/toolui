@@ -14,6 +14,7 @@ export {
 } from "./pid-file";
 export type {
 	ChangeCallback,
+	InitializeOptions,
 	IsToolReadyCallback,
 	SubscriberKey,
 } from "./process-manager";

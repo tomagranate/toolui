@@ -16,7 +16,7 @@ import { parse as parseToml } from "@iarna/toml";
  */
 
 // From src/lib/config/types.ts - Config interface
-const CONFIG_KEYS = ["tools", "home", "mcp", "ui"] as const;
+const CONFIG_KEYS = ["tools", "home", "mcp", "processes", "ui"] as const;
 
 // From src/lib/config/types.ts - HomeConfig interface
 const HOME_CONFIG_KEYS = [
@@ -28,6 +28,9 @@ const HOME_CONFIG_KEYS = [
 
 // From src/lib/config/types.ts - McpConfig interface
 const MCP_CONFIG_KEYS = ["enabled", "port"] as const;
+
+// From src/lib/config/types.ts - ProcessConfig interface
+const PROCESS_CONFIG_KEYS = ["cleanupOrphans"] as const;
 
 // From src/lib/config/types.ts - Config.ui interface
 const UI_CONFIG_KEYS = [
@@ -153,6 +156,33 @@ describe("Sample config validation", () => {
 		for (const key of mcpKeys) {
 			expect(MCP_CONFIG_KEYS).toContain(
 				key as (typeof MCP_CONFIG_KEYS)[number],
+			);
+		}
+	});
+
+	test("sample config [processes] section has all and only valid keys", async () => {
+		const samplePath = join(
+			import.meta.dir,
+			"..",
+			"..",
+			"..",
+			"sample-config-full.toml",
+		);
+		const content = await readFile(samplePath, "utf-8");
+		const config = parseToml(content) as Record<string, unknown>;
+
+		const processes = config.processes as Record<string, unknown>;
+		const processesKeys = Object.keys(processes);
+
+		// Check all expected keys are present
+		for (const key of PROCESS_CONFIG_KEYS) {
+			expect(processesKeys).toContain(key);
+		}
+
+		// Check no extra keys exist
+		for (const key of processesKeys) {
+			expect(PROCESS_CONFIG_KEYS).toContain(
+				key as (typeof PROCESS_CONFIG_KEYS)[number],
 			);
 		}
 	});

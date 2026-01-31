@@ -1,6 +1,12 @@
 import { readFile } from "node:fs/promises";
 import { parse as parseToml } from "@iarna/toml";
-import type { ASCIIFontName, Config, HomeConfig, McpConfig } from "./types";
+import type {
+	ASCIIFontName,
+	Config,
+	HomeConfig,
+	McpConfig,
+	ProcessConfig,
+} from "./types";
 
 /** Valid ASCII font names for home tab title */
 const VALID_FONTS: ASCIIFontName[] = [
@@ -67,6 +73,12 @@ export async function loadConfig(
 			warnings,
 		);
 
+		// Validate and normalize processes config
+		const processesConfig = validateProcessConfig(
+			rawConfig.processes as Record<string, unknown> | undefined,
+			warnings,
+		);
+
 		// Validate and normalize ui config
 		const uiConfig = validateUiConfig(
 			rawConfig.ui as Record<string, unknown> | undefined,
@@ -78,6 +90,7 @@ export async function loadConfig(
 			tools: rawTools as unknown as Config["tools"],
 			...(homeConfig && { home: homeConfig }),
 			...(mcpConfig && { mcp: mcpConfig }),
+			...(processesConfig && { processes: processesConfig }),
 			...(uiConfig && { ui: uiConfig }),
 		};
 
@@ -209,6 +222,38 @@ function validateMcpConfig(
 	} else if (raw.port !== undefined) {
 		warnings.push(
 			`[mcp] 'port' must be an integer, got ${typeof raw.port}. Using default: 18765`,
+		);
+	}
+
+	return result;
+}
+
+/** Known keys for processes config section */
+const PROCESS_CONFIG_KEYS = ["cleanupOrphans"];
+
+/**
+ * Validate processes config section, collecting warnings for invalid values
+ */
+function validateProcessConfig(
+	raw: Record<string, unknown> | undefined,
+	warnings: string[],
+): ProcessConfig | undefined {
+	if (!raw) return undefined;
+
+	// Warn about unknown keys
+	for (const key of Object.keys(raw)) {
+		if (!PROCESS_CONFIG_KEYS.includes(key)) {
+			warnings.push(`[processes] Unknown option '${key}' - ignoring`);
+		}
+	}
+
+	const result: ProcessConfig = {};
+
+	if (typeof raw.cleanupOrphans === "boolean") {
+		result.cleanupOrphans = raw.cleanupOrphans;
+	} else if (raw.cleanupOrphans !== undefined) {
+		warnings.push(
+			`[processes] 'cleanupOrphans' must be a boolean, got ${typeof raw.cleanupOrphans}. Using default: true`,
 		);
 	}
 

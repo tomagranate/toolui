@@ -74,6 +74,24 @@ enabled = false
 port = 18765
 
 # ------------------------------------------------------------------------------
+# Process Management Configuration
+# ------------------------------------------------------------------------------
+# Configure how toolui manages processes across sessions.
+
+[processes]
+# Whether to cleanup orphaned processes from previous sessions on startup (default: true)
+#
+# When true, toolui will kill any processes that were started by a previous instance
+# of toolui (using the same config file) that crashed or was terminated without
+# proper cleanup.
+#
+# Note: Each config file gets its own isolated PID tracking, so multiple toolui
+# instances running different projects won't interfere with each other.
+#
+# Set to false if you want to manage process lifecycle manually.
+cleanupOrphans = true
+
+# ------------------------------------------------------------------------------
 # Tools Configuration
 # ------------------------------------------------------------------------------
 # Define the processes/tools that toolui will manage.

@@ -32,6 +32,15 @@ const GRACEFUL_SHUTDOWN_TIMEOUT = 10000;
 /** Polling interval for checking dependency readiness */
 const DEPENDENCY_POLL_INTERVAL = 500;
 
+/** Options for ProcessManager.initialize() */
+export interface InitializeOptions {
+	/**
+	 * Whether to cleanup orphaned processes from previous sessions.
+	 * Default: true
+	 */
+	cleanupOrphans?: boolean;
+}
+
 export class ProcessManager {
 	private tools: ToolState[] = [];
 	private maxLogLines: number;
@@ -107,9 +116,24 @@ export class ProcessManager {
 		}
 	}
 
-	async initialize(configs: ToolConfig[]): Promise<ToolState[]> {
+	/**
+	 * Initialize the ProcessManager with tool configurations.
+	 *
+	 * @param configs - Array of tool configurations
+	 * @param options - Optional initialization options
+	 * @returns Array of initialized tool states
+	 */
+	async initialize(
+		configs: ToolConfig[],
+		options: InitializeOptions = {},
+	): Promise<ToolState[]> {
+		const { cleanupOrphans = true } = options;
+
 		// First, load and cleanup any orphaned processes from previous sessions
-		await this.loadAndCleanupOrphanedProcesses();
+		// (if enabled and config path is set for instance-specific cleanup)
+		if (cleanupOrphans) {
+			await this.loadAndCleanupOrphanedProcesses();
+		}
 
 		this.tools = configs.map((config) => ({
 			config,
@@ -188,7 +212,7 @@ export class ProcessManager {
 				tool.pid = undefined;
 				tool.startTime = undefined;
 				// Remove PID from file when process exits
-				await removePidFromFile(index);
+				await removePidFromFile(index, this.configPath);
 				// addLog will also notify, but notify here for immediate status update
 				this.notifyChange(index);
 				this.addLog(index, `\n[Process exited with code ${exitCode}]`);
@@ -365,7 +389,7 @@ export class ProcessManager {
 				tool.process = null;
 				tool.pid = undefined;
 				tool.startTime = undefined;
-				await removePidFromFile(index);
+				await removePidFromFile(index, this.configPath);
 				this.notifyChange(index);
 			}
 		} catch (_error) {
@@ -374,7 +398,7 @@ export class ProcessManager {
 			tool.process = null;
 			tool.pid = undefined;
 			tool.startTime = undefined;
-			await removePidFromFile(index);
+			await removePidFromFile(index, this.configPath);
 			this.notifyChange(index);
 		}
 	}
@@ -409,7 +433,7 @@ export class ProcessManager {
 			tool.process = null;
 			tool.pid = undefined;
 			tool.startTime = undefined;
-			await removePidFromFile(index);
+			await removePidFromFile(index, this.configPath);
 		}
 
 		// Start fresh
@@ -494,7 +518,7 @@ export class ProcessManager {
 		await Promise.allSettled(cleanupPromises);
 
 		// Clear PID file after cleanup completes
-		await deletePidFile();
+		await deletePidFile(this.configPath);
 	}
 
 	getIsShuttingDown(): boolean {
@@ -599,7 +623,7 @@ export class ProcessManager {
 		}
 
 		// Clear PID file
-		await deletePidFile();
+		await deletePidFile(this.configPath);
 
 		// Re-read config
 		const { config, warnings } = await loadConfig(path);
@@ -716,7 +740,7 @@ export class ProcessManager {
 			cwd: tool.config.cwd || process.cwd(),
 		};
 
-		await updatePidFile(entry);
+		await updatePidFile(entry, this.configPath);
 	}
 
 	/**
@@ -724,7 +748,7 @@ export class ProcessManager {
 	 * Kills any processes that are still running and logs the cleanup.
 	 */
 	private async loadAndCleanupOrphanedProcesses(): Promise<void> {
-		const pidData = await loadPidFile();
+		const pidData = await loadPidFile(this.configPath);
 		if (!pidData || pidData.processes.length === 0) {
 			return;
 		}
@@ -757,6 +781,9 @@ export class ProcessManager {
 
 		// Log cleanup actions (will be visible when tools start)
 		console.log(cleanupLog.join("\n"));
+
+		// Clear the PID file after cleanup - all entries are now stale
+		await deletePidFile(this.configPath);
 	}
 
 	/**
