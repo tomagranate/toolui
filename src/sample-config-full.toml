@@ -1,7 +1,7 @@
-# toolui Configuration Reference
+# corsa Configuration Reference
 # ==============================
 # This file documents ALL available configuration options.
-# For a minimal starter config, run: toolui init
+# For a minimal starter config, run: corsa init
 
 # ------------------------------------------------------------------------------
 # Home Tab Configuration
@@ -76,16 +76,16 @@ port = 18765
 # ------------------------------------------------------------------------------
 # Process Management Configuration
 # ------------------------------------------------------------------------------
-# Configure how toolui manages processes across sessions.
+# Configure how corsa manages processes across sessions.
 
 [processes]
 # Whether to cleanup orphaned processes from previous sessions on startup (default: true)
 #
-# When true, toolui will kill any processes that were started by a previous instance
-# of toolui (using the same config file) that crashed or was terminated without
+# When true, corsa will kill any processes that were started by a previous instance
+# of corsa (using the same config file) that crashed or was terminated without
 # proper cleanup.
 #
-# Note: Each config file gets its own isolated PID tracking, so multiple toolui
+# Note: Each config file gets its own isolated PID tracking, so multiple corsa
 # instances running different projects won't interfere with each other.
 #
 # Set to false if you want to manage process lifecycle manually.
@@ -94,7 +94,7 @@ cleanupOrphans = true
 # ------------------------------------------------------------------------------
 # Tools Configuration
 # ------------------------------------------------------------------------------
-# Define the processes/tools that toolui will manage.
+# Define the processes/tools that corsa will manage.
 # Each [[tools]] section defines one tool.
 
 [[tools]]

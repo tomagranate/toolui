@@ -19,12 +19,12 @@ const DEFAULT_PREFERENCES: Preferences = {};
 
 /**
  * Gets the path to the preferences file.
- * Uses ~/.config/toolui/preferences.json following XDG conventions.
+ * Uses ~/.config/corsa/preferences.json following XDG conventions.
  */
 export function getPreferencesPath(): string {
 	const configDir =
 		process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config");
-	return path.join(configDir, "toolui", "preferences.json");
+	return path.join(configDir, "corsa", "preferences.json");
 }
 
 /**

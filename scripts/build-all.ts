@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 /**
- * Build toolui binaries for all supported platforms.
+ * Build corsa binaries for all supported platforms.
  *
  * Usage:
  *   bun run scripts/build-all.ts
@@ -48,7 +48,7 @@ async function getVersion(): Promise<string> {
 }
 
 async function buildTarget(target: BuildTarget, outDir: string): Promise<void> {
-	const outputName = `toolui-${target.os}-${target.arch}${target.extension}`;
+	const outputName = `corsa-${target.os}-${target.arch}${target.extension}`;
 	const outputPath = join(outDir, outputName);
 
 	console.log(`Building ${outputName}...`);
@@ -62,7 +62,7 @@ async function main() {
 	const version = await getVersion();
 	const outDir = join(import.meta.dir, "..", "dist");
 
-	console.log(`\nBuilding toolui v${version} for all platforms\n`);
+	console.log(`\nBuilding corsa v${version} for all platforms\n`);
 
 	// Create output directory
 	await mkdir(outDir, { recursive: true });

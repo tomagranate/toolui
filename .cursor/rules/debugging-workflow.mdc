@@ -1,19 +1,19 @@
 ---
-description: Workflow for debugging toolui by running it and checking logs
+description: Workflow for debugging corsa by running it and checking logs
 globs: "*.ts, *.tsx"
 alwaysApply: false
 ---
 
 # Debugging Workflow
 
-When debugging UI issues, animations, or timing problems in toolui:
+When debugging UI issues, animations, or timing problems in corsa:
 
 ## 1. Create a Minimal Test Config
 
 Create a temporary config file with only the tools needed to reproduce the issue:
 
 ```bash
-# Create toolui.config.debug.toml with minimal tools
+# Create corsa.config.debug.toml with minimal tools
 ```
 
 Example minimal config:
@@ -33,7 +33,7 @@ Add debug logging to relevant code using the debug logger:
 import { enableDebugLogging, debugLog, createDebugLogger } from "./lib/debug";
 
 // Enable at app startup (e.g., in index.tsx)
-enableDebugLogging(); // Logs to /tmp/toolui-debug.log
+enableDebugLogging(); // Logs to /tmp/corsa-debug.log
 
 // Use in code
 debugLog("ComponentName", "event description", { key: "value" });
@@ -43,16 +43,16 @@ const log = createDebugLogger("ProcessManager");
 log("stream read", { bytes: 37, waitMs: 101 });
 ```
 
-## 3. Run Toolui and Capture Logs
+## 3. Run Corsa and Capture Logs
 
 ```bash
 # Run with debug config in background
-bun run dev -- -c toolui.config.debug.toml &
+bun run dev -- -c corsa.config.debug.toml &
 sleep 5
 kill %1 2>/dev/null || true
 
 # Read the debug logs
-cat /tmp/toolui-debug.log
+cat /tmp/corsa-debug.log
 ```
 
 ## 4. Analyze the Logs
@@ -74,7 +74,7 @@ After debugging, always:
 1. Remove debug logging calls from code
 2. Delete temporary config files:
    ```bash
-   rm -f toolui.config.debug.toml
-   rm -f /tmp/toolui-debug.log
+   rm -f corsa.config.debug.toml
+   rm -f /tmp/corsa-debug.log
    ```
 3. Run `bun run typecheck && bun run check` to verify no debug code remains

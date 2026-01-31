@@ -1,10 +1,10 @@
 {
-	"name": "@tomagranate/toolui",
+	"name": "@tomagranate/corsa",
 	"version": "0.3.4",
 	"description": "A Terminal User Interface (TUI) for running multiple local development servers and tools simultaneously",
 	"type": "module",
 	"bin": {
-		"toolui": "bin/toolui"
+		"corsa": "bin/corsa"
 	},
 	"files": [
 		"bin",
@@ -12,7 +12,7 @@
 	],
 	"scripts": {
 		"dev": "bun run src/index.tsx",
-		"build": "bun build src/index.tsx --compile --minify --outfile dist/toolui",
+		"build": "bun build src/index.tsx --compile --minify --outfile dist/corsa",
 		"build:all": "bun run scripts/build-all.ts",
 		"postinstall": "node scripts/postinstall.cjs",
 		"check": "biome check --fix",
@@ -37,11 +37,11 @@
 	"license": "MIT",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/tomagranate/toolui.git"
+		"url": "git+https://github.com/tomagranate/corsa.git"
 	},
-	"homepage": "https://github.com/tomagranate/toolui#readme",
+	"homepage": "https://github.com/tomagranate/corsa#readme",
 	"bugs": {
-		"url": "https://github.com/tomagranate/toolui/issues"
+		"url": "https://github.com/tomagranate/corsa/issues"
 	},
 	"engines": {
 		"node": ">=18.0.0"

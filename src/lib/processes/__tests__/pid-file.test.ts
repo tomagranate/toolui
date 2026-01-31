@@ -12,8 +12,8 @@ import {
 
 describe("PID file utilities", () => {
 	// Test config paths for instance-specific tests
-	const testConfigPath1 = "/test/project-a/toolui.config.toml";
-	const testConfigPath2 = "/test/project-b/toolui.config.toml";
+	const testConfigPath1 = "/test/project-a/corsa.config.toml";
+	const testConfigPath2 = "/test/project-b/corsa.config.toml";
 
 	beforeEach(async () => {
 		// Clean up before each test (both global and instance-specific files)
@@ -31,7 +31,7 @@ describe("PID file utilities", () => {
 
 	test("getPidFilePath - returns valid path without configPath", () => {
 		const path = getPidFilePath();
-		expect(path).toContain("toolui-pids.json");
+		expect(path).toContain("corsa-pids.json");
 		expect(typeof path).toBe("string");
 	});
 
@@ -47,9 +47,9 @@ describe("PID file utilities", () => {
 		// And different from each other
 		expect(path1).not.toBe(path2);
 
-		// But both should follow the pattern toolui-{hash}.json
-		expect(path1).toMatch(/toolui-[a-f0-9]+\.json$/);
-		expect(path2).toMatch(/toolui-[a-f0-9]+\.json$/);
+		// But both should follow the pattern corsa-{hash}.json
+		expect(path1).toMatch(/corsa-[a-f0-9]+\.json$/);
+		expect(path2).toMatch(/corsa-[a-f0-9]+\.json$/);
 	});
 
 	test("getPidFilePath - same configPath returns same hash", () => {
@@ -60,7 +60,7 @@ describe("PID file utilities", () => {
 
 	test("getPidFilePath - relative vs absolute path normalizes to same hash", () => {
 		// The function uses resolve() so these should produce the same hash
-		const absolutePath = "/Users/test/project/toolui.config.toml";
+		const absolutePath = "/Users/test/project/corsa.config.toml";
 		const path1 = getPidFilePath(absolutePath);
 		const path2 = getPidFilePath(absolutePath);
 		expect(path1).toBe(path2);

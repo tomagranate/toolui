@@ -613,7 +613,7 @@ describe("ApiServer", () => {
 			const os = await import("node:os");
 
 			// Create a temp config file with different tools
-			const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "toolui-test-"));
+			const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "corsa-test-"));
 			const configPath = path.join(tempDir, "config.toml");
 			await fs.writeFile(
 				configPath,
@@ -640,8 +640,9 @@ args = ["three"]
 
 				// Get the MCP API tool's log count before reload
 				const mcpToolBefore = processManager.getToolByName("MCP API");
-				expect(mcpToolBefore).toBeDefined();
-				const logCountBefore = mcpToolBefore!.tool.logs.length;
+				if (!mcpToolBefore)
+					throw new Error("Expected MCP API tool to exist before reload");
+				const logCountBefore = mcpToolBefore.tool.logs.length;
 
 				// Perform reload
 				await processManager.reload();
@@ -651,18 +652,21 @@ args = ["three"]
 				// - virtual tools (MCP API) are appended after
 				// So MCP API should now be at index 3 (0-indexed)
 				const mcpToolAfter = processManager.getToolByName("MCP API");
-				expect(mcpToolAfter).toBeDefined();
-				expect(mcpToolAfter!.index).toBe(3); // Verify index changed
+				if (!mcpToolAfter)
+					throw new Error("Expected MCP API tool to exist after reload");
+				expect(mcpToolAfter.index).toBe(3); // Verify index changed
 
 				// Make a request - this should log to the MCP API tool
 				await fetch(apiUrl("/api/health"));
 
 				// Verify the log went to the MCP API tool (not a random tool)
 				const mcpToolFinal = processManager.getToolByName("MCP API");
-				expect(mcpToolFinal!.tool.logs.length).toBeGreaterThan(logCountBefore);
+				if (!mcpToolFinal)
+					throw new Error("Expected MCP API tool to exist after request");
+				expect(mcpToolFinal.tool.logs.length).toBeGreaterThan(logCountBefore);
 
 				// Check the log contains the request
-				const lastLog = mcpToolFinal!.tool.logs.slice(-1)[0];
+				const lastLog = mcpToolFinal.tool.logs.slice(-1)[0];
 				const logText = lastLog?.segments.map((seg) => seg.text).join("") ?? "";
 				expect(logText).toContain("GET /api/health");
 

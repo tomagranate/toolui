@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Postinstall script for toolui NPM package.
+ * Postinstall script for corsa NPM package.
  * Downloads the appropriate binary for the current platform.
  */
 
@@ -11,7 +11,7 @@ const { execSync } = require("node:child_process");
 const zlib = require("node:zlib");
 
 // Configuration
-const REPO = "tomagranate/toolui";
+const REPO = "tomagranate/corsa";
 const GITHUB_RELEASES = `https://github.com/${REPO}/releases`;
 
 // Platform mappings
@@ -47,7 +47,7 @@ function printHeader() {
 		`${colors.cyan}${colors.bold}  ╭─────────────────────────────────╮${colors.reset}`,
 	);
 	console.log(
-		`${colors.cyan}${colors.bold}  │       toolui postinstall        │${colors.reset}`,
+		`${colors.cyan}${colors.bold}  │        corsa postinstall        │${colors.reset}`,
 	);
 	console.log(
 		`${colors.cyan}${colors.bold}  ╰─────────────────────────────────╯${colors.reset}`,
@@ -123,7 +123,7 @@ function showProgress(downloaded, total) {
  */
 function clearProgress() {
 	if (!process.stdout.isTTY) return;
-	process.stdout.write("\r" + " ".repeat(70) + "\r");
+	process.stdout.write(`\r${" ".repeat(70)}\r`);
 }
 
 /**
@@ -131,7 +131,7 @@ function clearProgress() {
  */
 async function downloadWithProgress(url) {
 	const response = await fetch(url, {
-		headers: { "User-Agent": "toolui-postinstall" },
+		headers: { "User-Agent": "corsa-postinstall" },
 	});
 
 	if (!response.ok) {
@@ -198,7 +198,7 @@ function extractTarGz(data, destPath) {
 
 				offset += 512;
 
-				if (filename && size > 0 && filename.startsWith("toolui")) {
+				if (filename && size > 0 && filename.startsWith("corsa")) {
 					const content = tarData.slice(offset, offset + size);
 					fs.writeFileSync(destPath, content);
 					fs.chmodSync(destPath, 0o755);
@@ -275,7 +275,7 @@ async function main() {
 	}
 
 	const version = getVersion();
-	const binaryName = `toolui-${platform}-${arch}`;
+	const binaryName = `corsa-${platform}-${arch}`;
 	const binDir = path.join(__dirname, "..", "bin");
 	const destPath = path.join(
 		binDir,
@@ -309,11 +309,11 @@ async function main() {
 		await downloadFromUrl(url, destPath, platform === "windows");
 
 		step("Extracting...");
-		success(`toolui v${version} ready`);
+		success(`corsa v${version} ready`);
 
 		console.log(`  ${colors.dim}Get started:${colors.reset}`);
-		console.log(`  ${colors.cyan}$${colors.reset} toolui init`);
-		console.log(`  ${colors.cyan}$${colors.reset} toolui`);
+		console.log(`  ${colors.cyan}$${colors.reset} corsa init`);
+		console.log(`  ${colors.cyan}$${colors.reset} corsa`);
 		console.log();
 	} catch (error) {
 		printError(`Download failed: ${error.message}`);

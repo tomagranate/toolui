@@ -33,7 +33,7 @@ async function main() {
 
 	// Handle --version
 	if (args.showVersion) {
-		console.log(`toolui v${getVersion()}`);
+		console.log(`corsa v${getVersion()}`);
 		process.exit(0);
 	}
 
@@ -118,13 +118,13 @@ async function main() {
 
 	try {
 		// Load configuration
-		const configPath = args.configPath ?? "toolui.config.toml";
+		const configPath = args.configPath ?? "corsa.config.toml";
 		const { config, warnings } = await loadConfig(configPath);
 		configWarnings = warnings;
 
 		if (config.tools.length === 0) {
 			console.error(
-				"No tools configured. Please add tools to your config file. Run `toolui init` to get started.",
+				"No tools configured. Please add tools to your config file. Run `corsa init` to get started.",
 			);
 			process.exit(1);
 		}
@@ -324,7 +324,7 @@ async function main() {
 		if (error instanceof Error) {
 			console.error(`Error: ${error.message}`);
 		} else {
-			console.error("Error starting toolui:", error);
+			console.error("Error starting corsa:", error);
 		}
 		process.exit(1);
 	}

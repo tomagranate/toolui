@@ -1,7 +1,7 @@
 /**
  * MCP command - starts the MCP server for AI agent integration.
  *
- * This connects to toolui's HTTP API and exposes process management
+ * This connects to corsa's HTTP API and exposes process management
  * capabilities to AI agents via the Model Context Protocol.
  */
 
@@ -40,7 +40,7 @@ interface ApiResponse<T> {
 }
 
 /**
- * Make a request to the toolui HTTP API.
+ * Make a request to the corsa HTTP API.
  */
 async function apiRequest<T>(
 	baseUrl: string,
@@ -61,8 +61,8 @@ async function apiRequest<T>(
 	} catch (error) {
 		if (error instanceof TypeError && error.message.includes("fetch")) {
 			throw new Error(
-				`Cannot connect to toolui API at ${baseUrl}. ` +
-					"Make sure toolui is running with mcp.enabled = true in your config.",
+				`Cannot connect to corsa API at ${baseUrl}. ` +
+					"Make sure corsa is running with mcp.enabled = true in your config.",
 			);
 		}
 		throw error;
@@ -70,7 +70,7 @@ async function apiRequest<T>(
 }
 
 /**
- * Check if toolui API is reachable.
+ * Check if corsa API is reachable.
  */
 async function checkHealth(baseUrl: string): Promise<boolean> {
 	try {
@@ -87,12 +87,12 @@ async function checkHealth(baseUrl: string): Promise<boolean> {
  */
 export async function runMcp(configPath?: string): Promise<void> {
 	// Determine API URL from config or environment
-	let apiUrl = process.env.TOOLUI_API_URL;
+	let apiUrl = process.env.CORSA_API_URL;
 
 	if (!apiUrl) {
 		// Try to read port from config
 		try {
-			const { config } = await loadConfig(configPath ?? "toolui.config.toml");
+			const { config } = await loadConfig(configPath ?? "corsa.config.toml");
 			const port = config.mcp?.port ?? DEFAULT_MCP_PORT;
 			apiUrl = `http://localhost:${port}`;
 		} catch {
@@ -103,10 +103,10 @@ export async function runMcp(configPath?: string): Promise<void> {
 
 	// Create MCP server
 	const server = new McpServer({
-		name: "toolui",
+		name: "corsa",
 		version: "1.0.0",
 		description:
-			"Interact with local development processes managed by toolui. " +
+			"Interact with local development processes managed by corsa. " +
 			"Use these tools to read logs, debug errors, and control running servers. " +
 			"Helpful when: debugging build/runtime errors, checking if a server started correctly, " +
 			"viewing application output, or restarting crashed processes.",
@@ -278,8 +278,8 @@ export async function runMcp(configPath?: string): Promise<void> {
 	// reload_config - Reload the configuration file and restart all processes
 	server.tool(
 		"reload_config",
-		"Reload the toolui configuration file and restart all processes. " +
-			"Use this after modifying toolui.config.toml to apply changes without restarting toolui. " +
+		"Reload the corsa configuration file and restart all processes. " +
+			"Use this after modifying corsa.config.toml to apply changes without restarting corsa. " +
 			"All running processes will be stopped and restarted with the new configuration.",
 		{},
 		async () => {
@@ -307,10 +307,10 @@ export async function runMcp(configPath?: string): Promise<void> {
 
 	// Register resources
 
-	// toolui://processes - List all processes
+	// corsa://processes - List all processes
 	server.resource(
-		"toolui://processes",
-		"List of all processes managed by toolui",
+		"corsa://processes",
+		"List of all processes managed by corsa",
 		async () => {
 			const processes = await apiRequest<ProcessSummary[]>(
 				apiUrl,
@@ -320,7 +320,7 @@ export async function runMcp(configPath?: string): Promise<void> {
 			return {
 				contents: [
 					{
-						uri: "toolui://processes",
+						uri: "corsa://processes",
 						mimeType: "application/json",
 						text: JSON.stringify(processes, null, 2),
 					},
@@ -329,12 +329,12 @@ export async function runMcp(configPath?: string): Promise<void> {
 		},
 	);
 
-	// Check if toolui is reachable
+	// Check if corsa is reachable
 	const healthy = await checkHealth(apiUrl);
 	if (!healthy) {
-		console.error(`Warning: Cannot connect to toolui API at ${apiUrl}`);
+		console.error(`Warning: Cannot connect to corsa API at ${apiUrl}`);
 		console.error(
-			"Make sure toolui is running with mcp.enabled = true in your config.",
+			"Make sure corsa is running with mcp.enabled = true in your config.",
 		);
 		// Continue anyway - the API might become available later
 	}

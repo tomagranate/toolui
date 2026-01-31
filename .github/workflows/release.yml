@@ -51,15 +51,15 @@ jobs:
         run: |
           VERSION="${{ steps.tag.outputs.version }}"
           # For scoped packages, encode the @ and / properly for the npm registry URL
-          # @tomagranate/toolui -> @tomagranate%2Ftoolui
-          PACKAGE_URL="https://registry.npmjs.org/@tomagranate%2Ftoolui/${VERSION}"
+          # @tomagranate/corsa -> @tomagranate%2Fcorsa
+          PACKAGE_URL="https://registry.npmjs.org/@tomagranate%2Fcorsa/${VERSION}"
           
           echo "Checking npm registry: $PACKAGE_URL"
           HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$PACKAGE_URL")
           echo "HTTP status: $HTTP_STATUS"
           
           if [ "$HTTP_STATUS" = "200" ]; then
-            echo "::error::Version ${VERSION} of @tomagranate/toolui has already been published to npm."
+            echo "::error::Version ${VERSION} of @tomagranate/corsa has already been published to npm."
             echo "Use a different version or unpublish the existing version first."
             exit 1
           fi
@@ -139,13 +139,13 @@ jobs:
       - name: Build binary
         run: |
           mkdir -p dist
-          BINARY_NAME="toolui-${{ matrix.os }}-${{ matrix.arch }}"
+          BINARY_NAME="corsa-${{ matrix.os }}-${{ matrix.arch }}"
           bun build src/index.tsx --compile --minify --outfile=dist/${BINARY_NAME}
 
       - name: Create archive
         run: |
           cd dist
-          BINARY_NAME="toolui-${{ matrix.os }}-${{ matrix.arch }}"
+          BINARY_NAME="corsa-${{ matrix.os }}-${{ matrix.arch }}"
           chmod +x ${BINARY_NAME}
           tar -czvf ${BINARY_NAME}.tar.gz ${BINARY_NAME}
           shasum -a 256 ${BINARY_NAME}.tar.gz > ${BINARY_NAME}.tar.gz.sha256
@@ -153,10 +153,10 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: toolui-${{ matrix.os }}-${{ matrix.arch }}
+          name: corsa-${{ matrix.os }}-${{ matrix.arch }}
           path: |
-            dist/toolui-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
-            dist/toolui-${{ matrix.os }}-${{ matrix.arch }}.tar.gz.sha256
+            dist/corsa-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
+            dist/corsa-${{ matrix.os }}-${{ matrix.arch }}.tar.gz.sha256
 
   build-windows:
     name: Build windows-x64
@@ -177,23 +177,23 @@ jobs:
       - name: Build binary
         run: |
           mkdir -p dist
-          bun build src/index.tsx --compile --minify --outfile=dist/toolui-windows-x64.exe
+          bun build src/index.tsx --compile --minify --outfile=dist/corsa-windows-x64.exe
 
       - name: Create archive
         shell: pwsh
         run: |
           cd dist
-          Compress-Archive -Path toolui-windows-x64.exe -DestinationPath toolui-windows-x64.zip
-          $hash = (Get-FileHash -Algorithm SHA256 toolui-windows-x64.zip).Hash.ToLower()
-          "$hash  toolui-windows-x64.zip" | Out-File -Encoding ascii toolui-windows-x64.zip.sha256
+          Compress-Archive -Path corsa-windows-x64.exe -DestinationPath corsa-windows-x64.zip
+          $hash = (Get-FileHash -Algorithm SHA256 corsa-windows-x64.zip).Hash.ToLower()
+          "$hash  corsa-windows-x64.zip" | Out-File -Encoding ascii corsa-windows-x64.zip.sha256
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: toolui-windows-x64
+          name: corsa-windows-x64
           path: |
-            dist/toolui-windows-x64.zip
-            dist/toolui-windows-x64.zip.sha256
+            dist/corsa-windows-x64.zip
+            dist/corsa-windows-x64.zip.sha256
 
   release:
     name: Create Release
@@ -273,18 +273,20 @@ jobs:
           VERSION=${{ steps.version.outputs.version }}
           mkdir -p checksums
           for platform in darwin-arm64 darwin-x64 linux-x64 linux-arm64; do
-            curl -sL "https://github.com/${{ github.repository }}/releases/download/v${VERSION}/toolui-${platform}.tar.gz.sha256" -o checksums/${platform}.sha256
+            curl -sL "https://github.com/${{ github.repository }}/releases/download/v${VERSION}/corsa-${platform}.tar.gz.sha256" -o checksums/${platform}.sha256
           done
 
       - name: Trigger Homebrew tap update
         uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          repository: ${{ github.repository_owner }}/homebrew-toolui
+          repository: ${{ github.repository_owner }}/homebrew-tap
           event-type: update-formula
           client-payload: |
             {
+              "formula": "corsa",
               "version": "${{ steps.version.outputs.version }}",
+              "repo": "tomagranate/corsa",
               "darwin_arm64_sha256": "${{ env.DARWIN_ARM64_SHA256 }}",
               "darwin_x64_sha256": "${{ env.DARWIN_X64_SHA256 }}",
               "linux_x64_sha256": "${{ env.LINUX_X64_SHA256 }}",

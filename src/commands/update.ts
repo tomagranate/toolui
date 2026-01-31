@@ -12,10 +12,10 @@ import { createGunzip } from "node:zlib";
 import { getVersion } from "../cli";
 
 /** Package name on npm */
-const NPM_PACKAGE = "@tomagranate/toolui";
+const NPM_PACKAGE = "@tomagranate/corsa";
 
 /** GitHub repo for releases */
-const GITHUB_REPO = "tomagranate/toolui";
+const GITHUB_REPO = "tomagranate/corsa";
 
 /** Installation method types */
 export type InstallMethod =
@@ -68,10 +68,10 @@ export function detectInstallMethodFromPath(
 	// Check for direct binary install
 	// These are standalone binaries not in any package manager's directory
 	const homeDir = process.env.HOME || "";
-	const localBinPath = join(homeDir, ".local", "bin", "toolui");
+	const localBinPath = join(homeDir, ".local", "bin", "corsa");
 
 	if (
-		realPath === "/usr/local/bin/toolui" ||
+		realPath === "/usr/local/bin/corsa" ||
 		realPath === localBinPath ||
 		// Standalone binaries have no node_modules in path and are not in Cellar
 		(!realPath.includes("node_modules") && !realPath.includes("/Cellar/"))
@@ -80,7 +80,7 @@ export function detectInstallMethodFromPath(
 		// Only do this check in production, not in tests (controlled by options)
 		if (options?.checkBrew !== false && commandExists("brew")) {
 			try {
-				const result = spawnSync("brew", ["list", "--formula", "toolui"], {
+				const result = spawnSync("brew", ["list", "--formula", "corsa"], {
 					encoding: "utf-8",
 					stdio: ["pipe", "pipe", "pipe"],
 				});
@@ -150,7 +150,7 @@ async function getLatestVersion(): Promise<string> {
 			url,
 			{
 				headers: {
-					"User-Agent": "toolui-update",
+					"User-Agent": "corsa-update",
 					Accept: "application/vnd.github.v3+json",
 				},
 			},
@@ -161,7 +161,7 @@ async function getLatestVersion(): Promise<string> {
 					if (location) {
 						httpsGet(
 							location,
-							{ headers: { "User-Agent": "toolui-update" } },
+							{ headers: { "User-Agent": "corsa-update" } },
 							(redirectRes) => {
 								handleResponse(redirectRes, resolve, reject);
 							},
@@ -217,7 +217,7 @@ function downloadFile(url: string, destPath: string): Promise<void> {
 		const request = (downloadUrl: string) => {
 			httpsGet(
 				downloadUrl,
-				{ headers: { "User-Agent": "toolui-update" } },
+				{ headers: { "User-Agent": "corsa-update" } },
 				(res) => {
 					// Follow redirects
 					if (
@@ -295,9 +295,9 @@ async function extractTarGz(
 
 				offset += 512;
 
-				if (filename && size > 0 && filename.startsWith("toolui")) {
+				if (filename && size > 0 && filename.startsWith("corsa")) {
 					const content = tarData.subarray(offset, offset + size);
-					const binaryPath = join(destDir, "toolui-new");
+					const binaryPath = join(destDir, "corsa-new");
 					const { writeFileSync } = require("node:fs");
 					writeFileSync(binaryPath, content);
 					await chmod(binaryPath, 0o755);
@@ -307,7 +307,7 @@ async function extractTarGz(
 
 				offset += Math.ceil(size / 512) * 512;
 			}
-			reject(new Error("Could not find toolui binary in archive"));
+			reject(new Error("Could not find corsa binary in archive"));
 		});
 		gunzip.on("error", reject);
 
@@ -345,14 +345,14 @@ async function selfUpdate(): Promise<void> {
 
 	// Build download URL
 	const archiveExt = platform === "windows" ? "zip" : "tar.gz";
-	const binaryName = `toolui-${platform}-${arch}`;
+	const binaryName = `corsa-${platform}-${arch}`;
 	const downloadUrl = `https://github.com/${GITHUB_REPO}/releases/download/v${latestVersion}/${binaryName}.${archiveExt}`;
 
 	console.log(`Downloading ${binaryName}...`);
 
 	// Download to temp directory
 	const tempDir = tmpdir();
-	const archivePath = join(tempDir, `toolui-update.${archiveExt}`);
+	const archivePath = join(tempDir, `corsa-update.${archiveExt}`);
 
 	await downloadFile(downloadUrl, archivePath);
 
@@ -373,7 +373,7 @@ async function selfUpdate(): Promise<void> {
 	);
 	let needsSudo = false;
 	try {
-		const testFile = join(binaryDir, ".toolui-update-test");
+		const testFile = join(binaryDir, ".corsa-update-test");
 		const { writeFileSync } = require("node:fs");
 		writeFileSync(testFile, "");
 		unlinkSync(testFile);
@@ -419,25 +419,25 @@ export async function runUpdate(): Promise<void> {
 		pnpm: ["pnpm", "update", "-g", NPM_PACKAGE],
 		bun: ["bun", "update", "-g", NPM_PACKAGE],
 		yarn: ["yarn", "global", "upgrade", NPM_PACKAGE],
-		brew: ["brew", "upgrade", "toolui"],
+		brew: ["brew", "upgrade", "corsa"],
 	};
 
 	try {
 		if (method === "direct") {
 			await selfUpdate();
 		} else if (method === "unknown") {
-			console.log("Could not detect how toolui was installed.");
+			console.log("Could not detect how corsa was installed.");
 			console.log("");
 			console.log("Try one of these commands manually:");
-			console.log("  npm update -g @tomagranate/toolui");
-			console.log("  pnpm update -g @tomagranate/toolui");
-			console.log("  bun update -g @tomagranate/toolui");
-			console.log("  yarn global upgrade @tomagranate/toolui");
-			console.log("  brew upgrade toolui");
+			console.log("  npm update -g @tomagranate/corsa");
+			console.log("  pnpm update -g @tomagranate/corsa");
+			console.log("  bun update -g @tomagranate/corsa");
+			console.log("  yarn global upgrade @tomagranate/corsa");
+			console.log("  brew upgrade corsa");
 			console.log("");
 			console.log("Or reinstall via the install script:");
 			console.log(
-				"  curl -fsSL https://raw.githubusercontent.com/tomagranate/toolui/main/install.sh | bash",
+				"  curl -fsSL https://raw.githubusercontent.com/tomagranate/corsa/main/install.sh | bash",
 			);
 			process.exit(1);
 		} else {

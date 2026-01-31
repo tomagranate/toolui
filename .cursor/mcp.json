@@ -1,6 +1,6 @@
 {
 	"mcpServers": {
-		"toolui": {
+		"corsa": {
 			"command": "bun",
 			"args": ["run", "./src/index.tsx", "mcp"]
 		}

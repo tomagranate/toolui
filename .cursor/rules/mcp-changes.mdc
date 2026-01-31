@@ -10,7 +10,7 @@ When adding or modifying MCP tools, you MUST update these locations:
 
 ## 1. MCP Command (`src/commands/mcp.ts`)
 
-The MCP server implementation used when running `toolui mcp`. Add/modify tools here using `server.tool()`.
+The MCP server implementation used when running `corsa mcp`. Add/modify tools here using `server.tool()`.
 
 ## 2. API Server (`src/lib/api/api-server.ts`)
 

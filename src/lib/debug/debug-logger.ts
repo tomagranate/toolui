@@ -1,7 +1,7 @@
 import { appendFileSync, existsSync, unlinkSync, writeFileSync } from "node:fs";
 
 /** Default log file path */
-export const DEFAULT_DEBUG_LOG_FILE = "/tmp/toolui-debug.log";
+export const DEFAULT_DEBUG_LOG_FILE = "/tmp/corsa-debug.log";
 
 /** Whether debug logging is enabled */
 let debugEnabled = false;
@@ -14,7 +14,7 @@ let initialized = false;
 
 /**
  * Enable debug logging. Clears any existing log file.
- * @param logFile - Optional custom log file path (defaults to /tmp/toolui-debug.log)
+ * @param logFile - Optional custom log file path (defaults to /tmp/corsa-debug.log)
  */
 export function enableDebugLogging(logFile = DEFAULT_DEBUG_LOG_FILE): void {
 	debugEnabled = true;

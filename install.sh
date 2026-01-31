@@ -1,9 +1,9 @@
 #!/bin/bash
 #
-# Install script for toolui
+# Install script for corsa
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/tomagranate/toolui/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/tomagranate/corsa/main/install.sh | bash
 #
 # Environment variables:
 #   INSTALL_DIR  - Installation directory (default: /usr/local/bin or ~/.local/bin)
@@ -13,7 +13,7 @@
 set -e
 
 # Configuration
-REPO="tomagranate/toolui"
+REPO="tomagranate/corsa"
 GITHUB_URL="https://github.com/${REPO}"
 RELEASES_URL="${GITHUB_URL}/releases"
 
@@ -38,7 +38,7 @@ print_header() {
     echo
     echo -e "${CYAN}${BOLD}"
     echo "  ╭─────────────────────────────────╮"
-    echo "  │         toolui installer        │"
+    echo "  │          corsa installer        │"
     echo "  ╰─────────────────────────────────╯"
     echo -e "${RESET}"
 }
@@ -201,7 +201,7 @@ main() {
     echo
 
     # Build download URL
-    local binary_name="toolui-${os}-${arch}"
+    local binary_name="corsa-${os}-${arch}"
     local archive_ext="tar.gz"
     local exe_ext=""
     if [ "$os" = "windows" ]; then
@@ -231,7 +231,7 @@ main() {
 
     # Find the binary
     local binary_file
-    binary_file=$(find . -name "toolui*" -type f ! -name "*.tar.gz" ! -name "*.zip" | head -1)
+    binary_file=$(find . -name "corsa*" -type f ! -name "*.tar.gz" ! -name "*.zip" | head -1)
     if [ -z "$binary_file" ]; then
         error "Could not find binary in archive"
     fi
@@ -242,16 +242,16 @@ main() {
     
     # Use sudo if needed and available
     if [ -w "$install_dir" ]; then
-        mv "$binary_file" "${install_dir}/toolui${exe_ext}"
+        mv "$binary_file" "${install_dir}/corsa${exe_ext}"
     elif command -v sudo &>/dev/null; then
-        sudo mv "$binary_file" "${install_dir}/toolui${exe_ext}"
+        sudo mv "$binary_file" "${install_dir}/corsa${exe_ext}"
     else
         error "Cannot write to ${install_dir}. Run with sudo or set INSTALL_DIR."
     fi
 
     echo
     echo -e "  ${GREEN}${BOLD}╭─────────────────────────────────╮${RESET}"
-    echo -e "  ${GREEN}${BOLD}│${RESET}   ${GREEN}✓${RESET} Installed ${BOLD}toolui v${version}${RESET}     ${GREEN}${BOLD}│${RESET}"
+    echo -e "  ${GREEN}${BOLD}│${RESET}   ${GREEN}✓${RESET} Installed ${BOLD}corsa v${version}${RESET}      ${GREEN}${BOLD}│${RESET}"
     echo -e "  ${GREEN}${BOLD}╰─────────────────────────────────╯${RESET}"
     echo
 
@@ -266,12 +266,12 @@ main() {
 
     # Next steps
     echo -e "  ${DIM}Get started:${RESET}"
-    if command -v toolui &>/dev/null; then
-        echo -e "  ${CYAN}$${RESET} toolui init"
-        echo -e "  ${CYAN}$${RESET} toolui"
+    if command -v corsa &>/dev/null; then
+        echo -e "  ${CYAN}$${RESET} corsa init"
+        echo -e "  ${CYAN}$${RESET} corsa"
     else
-        echo -e "  ${CYAN}$${RESET} ${install_dir}/toolui init"
-        echo -e "  ${CYAN}$${RESET} ${install_dir}/toolui"
+        echo -e "  ${CYAN}$${RESET} ${install_dir}/corsa init"
+        echo -e "  ${CYAN}$${RESET} ${install_dir}/corsa"
     fi
     echo
 }

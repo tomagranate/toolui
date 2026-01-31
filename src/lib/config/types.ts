@@ -34,12 +34,12 @@ export interface McpConfig {
 export interface ProcessConfig {
 	/**
 	 * Whether to cleanup orphaned processes from previous sessions on startup.
-	 * When true (default), toolui will kill any processes that were started by
-	 * a previous instance of toolui (using the same config file) that crashed
+	 * When true (default), corsa will kill any processes that were started by
+	 * a previous instance of corsa (using the same config file) that crashed
 	 * or was terminated without proper cleanup.
 	 *
 	 * Set to false if you want to manage process lifecycle manually or if you're
-	 * running multiple toolui instances that might share process names.
+	 * running multiple corsa instances that might share process names.
 	 *
 	 * Default: true
 	 */

@@ -11,7 +11,7 @@ import { parse as parseToml } from "@iarna/toml";
  * 1. Add the key to the appropriate array below
  * 2. Add the option to src/sample-config-full.toml with documentation
  *
- * Note: sample-config.toml is the minimal version for `toolui init`
+ * Note: sample-config.toml is the minimal version for `corsa init`
  *       sample-config-full.toml is the comprehensive documentation version
  */
 

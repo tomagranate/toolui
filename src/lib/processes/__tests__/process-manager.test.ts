@@ -731,7 +731,7 @@ describe("ProcessManager", () => {
 		const os = await import("node:os");
 
 		// Create a temp config file
-		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "toolui-test-"));
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "corsa-test-"));
 		const configPath = path.join(tempDir, "config.toml");
 		await fs.writeFile(
 			configPath,
@@ -799,7 +799,7 @@ args = ["b"]
 		const os = await import("node:os");
 
 		// Create a temp config file
-		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "toolui-test-"));
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "corsa-test-"));
 		const configPath = path.join(tempDir, "config.toml");
 		await fs.writeFile(
 			configPath,
@@ -842,7 +842,7 @@ args = ["new"]
 		const os = await import("node:os");
 
 		// Create a temp config file
-		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "toolui-test-"));
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "corsa-test-"));
 		const configPath = path.join(tempDir, "config.toml");
 		await fs.writeFile(
 			configPath,
@@ -895,7 +895,7 @@ args = ["new"]
 		const os = await import("node:os");
 
 		// Create a temp config file
-		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "toolui-test-"));
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "corsa-test-"));
 		const configPath = path.join(tempDir, "config.toml");
 		await fs.writeFile(
 			configPath,
@@ -942,7 +942,7 @@ command = "echo"
 		const os = await import("node:os");
 
 		// Create two temp config files
-		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "toolui-test-"));
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "corsa-test-"));
 		const configPath1 = path.join(tempDir, "config1.toml");
 		const configPath2 = path.join(tempDir, "config2.toml");
 

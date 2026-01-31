@@ -1,12 +1,12 @@
-# ToolUI
+# Corsa
 
 A Terminal User Interface (TUI) for managing multiple local development processes. View real-time logs, monitor status, and control all your dev servers from a single dashboard.
 
 Built with [OpenTUI](https://github.com/anomalyco/opentui).
 
-## Why ToolUI?
+## Why Corsa?
 
-When working on a full-stack project, you often need to run multiple processes simultaneously—a frontend dev server, a backend API, database containers, workers, etc. ToolUI gives you:
+When working on a full-stack project, you often need to run multiple processes simultaneously—a frontend dev server, a backend API, database containers, workers, etc. Corsa gives you:
 
 - **Single dashboard** for all your processes with tabbed log viewing
 - **Real-time logs** with search and ANSI color support
@@ -19,42 +19,42 @@ When working on a full-stack project, you often need to run multiple processes s
 ### Homebrew (macOS and Linux)
 
 ```bash
-brew install tomagranate/toolui/toolui
+brew install tomagranate/tap/corsa
 ```
 
 ### NPM
 
 ```bash
-npm install -g @tomagranate/toolui
+npm install -g @tomagranate/corsa
 ```
 
 ### curl (macOS and Linux)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tomagranate/toolui/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/tomagranate/corsa/main/install.sh | bash
 ```
 
 ### Manual Download
 
-Download the latest binary for your platform from [Releases](https://github.com/tomagranate/toolui/releases).
+Download the latest binary for your platform from [Releases](https://github.com/tomagranate/corsa/releases).
 
 | Platform | Download |
 |----------|----------|
-| macOS (Apple Silicon) | `toolui-darwin-arm64.tar.gz` |
-| macOS (Intel) | `toolui-darwin-x64.tar.gz` |
-| Linux (x64) | `toolui-linux-x64.tar.gz` |
-| Linux (ARM64) | `toolui-linux-arm64.tar.gz` |
-| Windows (x64) | `toolui-windows-x64.zip` |
+| macOS (Apple Silicon) | `corsa-darwin-arm64.tar.gz` |
+| macOS (Intel) | `corsa-darwin-x64.tar.gz` |
+| Linux (x64) | `corsa-linux-x64.tar.gz` |
+| Linux (ARM64) | `corsa-linux-arm64.tar.gz` |
+| Windows (x64) | `corsa-windows-x64.zip` |
 
 ## Quick Start
 
 1. Create a config file in your project:
 
 ```bash
-toolui init
+corsa init
 ```
 
-2. Edit `toolui.config.toml` to add your processes:
+2. Edit `corsa.config.toml` to add your processes:
 
 ```toml
 [[tools]]
@@ -73,7 +73,7 @@ cwd = "./backend"
 3. Start the dashboard:
 
 ```bash
-toolui
+corsa
 ```
 
 ## CLI Reference
@@ -82,37 +82,37 @@ toolui
 
 | Command | Description |
 |---------|-------------|
-| `toolui` | Start the TUI dashboard |
-| `toolui init` | Create a sample config file in the current directory |
-| `toolui mcp` | Start the MCP server for AI agent integration |
+| `corsa` | Start the TUI dashboard |
+| `corsa init` | Create a sample config file in the current directory |
+| `corsa mcp` | Start the MCP server for AI agent integration |
 
 ### Options
 
 | Option | Description |
 |--------|-------------|
-| `-c, --config <path>` | Path to config file (default: `toolui.config.toml`) |
+| `-c, --config <path>` | Path to config file (default: `corsa.config.toml`) |
 | `-h, --help` | Show help message |
 
 ### Examples
 
 ```bash
 # Start with default config
-toolui
+corsa
 
 # Use a custom config file
-toolui --config ./configs/dev.toml
-toolui -c ./configs/dev.toml
+corsa --config ./configs/dev.toml
+corsa -c ./configs/dev.toml
 
 # Create a new config file
-toolui init
+corsa init
 
 # Start MCP server for AI integration
-toolui mcp
+corsa mcp
 ```
 
 ## Configuration
 
-ToolUI is configured via a TOML file. By default, it looks for `toolui.config.toml` in the current directory.
+Corsa is configured via a TOML file. By default, it looks for `corsa.config.toml` in the current directory.
 
 ### Minimal Example
 
@@ -170,7 +170,7 @@ For a complete reference of all configuration options, see the [sample config fi
 
 ## Themes
 
-ToolUI includes several built-in themes. Set in your config:
+Corsa includes several built-in themes. Set in your config:
 
 ```toml
 [ui]
@@ -181,7 +181,7 @@ Available themes: `default` (Moss), `mist`, `cappuccino`, `synthwave`, `terminal
 
 ## MCP Integration
 
-ToolUI can expose an HTTP API for AI agents (Cursor, Claude, etc.) via the Model Context Protocol.
+Corsa can expose an HTTP API for AI agents (Cursor, Claude, etc.) via the Model Context Protocol.
 
 ### Enable in Config
 
@@ -198,8 +198,8 @@ Add to your MCP configuration (e.g., `~/.cursor/mcp.json`):
 ```json
 {
   "mcpServers": {
-    "toolui": {
-      "command": "toolui",
+    "corsa": {
+      "command": "corsa",
       "args": ["mcp"]
     }
   }

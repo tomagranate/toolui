@@ -30,7 +30,7 @@ function hashConfigPath(configPath: string): string {
 /**
  * Get the path to the PID file in the OS temp directory.
  * When configPath is provided, generates an instance-specific filename to allow
- * multiple toolui instances (in different projects) to run simultaneously.
+ * multiple corsa instances (in different projects) to run simultaneously.
  *
  * @param configPath - Optional path to the config file. When provided, creates an
  *                     instance-specific PID file based on the config path hash.
@@ -39,10 +39,10 @@ export function getPidFilePath(configPath?: string): string {
 	const tempDir = tmpdir();
 	if (configPath) {
 		const hash = hashConfigPath(configPath);
-		return join(tempDir, `toolui-${hash}.json`);
+		return join(tempDir, `corsa-${hash}.json`);
 	}
 	// Fallback for backward compatibility (no config path provided)
-	return join(tempDir, "toolui-pids.json");
+	return join(tempDir, "corsa-pids.json");
 }
 
 /**

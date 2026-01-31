@@ -9,7 +9,7 @@ import { join } from "node:path";
 // Import sample config as text at bundle time - this embeds the content in the binary
 import sampleConfigContent from "../sample-config.toml" with { type: "text" };
 
-const CONFIG_FILENAME = "toolui.config.toml";
+const CONFIG_FILENAME = "corsa.config.toml";
 
 /**
  * Run the init command.
@@ -33,7 +33,7 @@ export async function runInit(): Promise<void> {
 		console.log("");
 		console.log("Next steps:");
 		console.log("  1. Edit the config file to add your tools");
-		console.log("  2. Run 'toolui' to start the dashboard");
+		console.log("  2. Run 'corsa' to start the dashboard");
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		console.error(`Error creating config file: ${message}`);

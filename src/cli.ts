@@ -1,5 +1,5 @@
 /**
- * CLI argument parser for toolui.
+ * CLI argument parser for corsa.
  *
  * Supports:
  *   --config <path>, -c <path>  Custom config file path
@@ -7,7 +7,7 @@
  *   --version, -v               Show version
  *   init                        Initialize a new config file
  *   mcp                         Start the MCP server
- *   update                      Update toolui to the latest version
+ *   update                      Update corsa to the latest version
  */
 
 // Import version at build time so it gets bundled into the compiled binary
@@ -62,12 +62,12 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CliArgs {
 			i++;
 		} else if (arg?.startsWith("-")) {
 			console.error(`Error: Unknown option: ${arg}`);
-			console.error("Run 'toolui --help' for usage information.");
+			console.error("Run 'corsa --help' for usage information.");
 			process.exit(1);
 		} else {
 			// Unknown positional argument
 			console.error(`Error: Unknown command: ${arg}`);
-			console.error("Run 'toolui --help' for usage information.");
+			console.error("Run 'corsa --help' for usage information.");
 			process.exit(1);
 		}
 	}
@@ -80,27 +80,27 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CliArgs {
  */
 export function getHelpText(): string {
 	return `
-toolui - Terminal UI for managing local development processes
+corsa - Terminal UI for managing local development processes
 
 Usage:
-  toolui [options]              Start the TUI dashboard
-  toolui init                   Create a sample config file in the current directory
-  toolui mcp                    Start the MCP server for AI agent integration
-  toolui update                 Update toolui to the latest version
+  corsa [options]              Start the TUI dashboard
+  corsa init                   Create a sample config file in the current directory
+  corsa mcp                    Start the MCP server for AI agent integration
+  corsa update                 Update corsa to the latest version
 
 Options:
-  -c, --config <path>           Path to config file (default: toolui.config.toml)
+  -c, --config <path>           Path to config file (default: corsa.config.toml)
   -h, --help                    Show this help message
   -v, --version                 Show version information
 
 Examples:
-  toolui                        Start with default config
-  toolui -c myconfig.toml       Start with custom config file
-  toolui init                   Create toolui.config.toml in current directory
-  toolui mcp                    Start MCP server (configure in your IDE)
-  toolui update                 Update to the latest version
+  corsa                        Start with default config
+  corsa -c myconfig.toml       Start with custom config file
+  corsa init                   Create corsa.config.toml in current directory
+  corsa mcp                    Start MCP server (configure in your IDE)
+  corsa update                 Update to the latest version
 
-Documentation: https://github.com/tomagranate/toolui
+Documentation: https://github.com/tomagranate/corsa
 `.trim();
 }
 

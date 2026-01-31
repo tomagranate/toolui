@@ -11,7 +11,7 @@ import {
 	isDebugEnabled,
 } from "../debug-logger";
 
-const TEST_LOG_FILE = "/tmp/toolui-debug-test.log";
+const TEST_LOG_FILE = "/tmp/corsa-debug-test.log";
 
 describe("debug-logger", () => {
 	beforeEach(() => {

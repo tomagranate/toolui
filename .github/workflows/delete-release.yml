@@ -56,7 +56,7 @@ jobs:
           fi
           
           # Check npm version (URL-encode the scoped package name)
-          PACKAGE_URL="https://registry.npmjs.org/@tomagranate%2Ftoolui/${VERSION}"
+          PACKAGE_URL="https://registry.npmjs.org/@tomagranate%2Fcorsa/${VERSION}"
           HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$PACKAGE_URL")
           
           if [ "$HTTP_STATUS" = "200" ]; then
@@ -152,7 +152,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           VERSION="${{ needs.validate-tag.outputs.version }}"
-          PACKAGE="@tomagranate/toolui"
+          PACKAGE="@tomagranate/corsa"
           
           echo "Unpublishing ${PACKAGE}@${VERSION}..."
           npm unpublish "${PACKAGE}@${VERSION}" --force
@@ -178,7 +178,7 @@ jobs:
           
           echo "Downloading checksums for v${VERSION}..."
           for platform in darwin-arm64 darwin-x64 linux-x64 linux-arm64; do
-            URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/toolui-${platform}.tar.gz.sha256"
+            URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/corsa-${platform}.tar.gz.sha256"
             echo "Downloading $URL"
             curl -sL "$URL" -o checksums/${platform}.sha256 || echo "Warning: Could not download checksum for $platform"
           done
@@ -197,11 +197,13 @@ jobs:
         uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          repository: ${{ github.repository_owner }}/homebrew-toolui
+          repository: ${{ github.repository_owner }}/homebrew-tap
           event-type: update-formula
           client-payload: |
             {
+              "formula": "corsa",
               "version": "${{ steps.previous.outputs.version }}",
+              "repo": "tomagranate/corsa",
               "darwin_arm64_sha256": "${{ env.DARWIN_ARM64_SHA256 }}",
               "darwin_x64_sha256": "${{ env.DARWIN_X64_SHA256 }}",
               "linux_x64_sha256": "${{ env.LINUX_X64_SHA256 }}",
