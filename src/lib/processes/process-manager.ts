@@ -26,6 +26,9 @@ export type SubscriberKey = "all" | number;
 /** Default timeout for waiting on dependencies (30 seconds) */
 const DEFAULT_DEPENDENCY_TIMEOUT = 30000;
 
+/** Timeout for graceful shutdown before force kill (10 seconds) */
+const GRACEFUL_SHUTDOWN_TIMEOUT = 10000;
+
 /** Polling interval for checking dependency readiness */
 const DEPENDENCY_POLL_INTERVAL = 500;
 
@@ -344,8 +347,10 @@ export class ProcessManager {
 		try {
 			// Send SIGTERM for graceful shutdown
 			tool.process.kill("SIGTERM");
-			// Wait for process to exit (up to 3 seconds)
-			const timeout = new Promise((resolve) => setTimeout(resolve, 3000));
+			// Wait for process to exit gracefully
+			const timeout = new Promise((resolve) =>
+				setTimeout(resolve, GRACEFUL_SHUTDOWN_TIMEOUT),
+			);
 			const exitPromise = tool.process.exited;
 
 			await Promise.race([exitPromise, timeout]);
@@ -385,7 +390,9 @@ export class ProcessManager {
 		) {
 			try {
 				tool.process.kill("SIGTERM");
-				const timeout = new Promise((resolve) => setTimeout(resolve, 3000));
+				const timeout = new Promise((resolve) =>
+					setTimeout(resolve, GRACEFUL_SHUTDOWN_TIMEOUT),
+				);
 				const exitPromise = tool.process.exited;
 
 				await Promise.race([exitPromise, timeout]);
